@@ -19,6 +19,7 @@ const (
 
 type path struct {
 	pathID protocol.PathID
+	ackPathID protocol.PathID
 	conn   connection
 	sess   *session
 
@@ -53,6 +54,8 @@ type path struct {
 // setup initializes values that are independent of the perspective
 func (p *path) setup(oliaSenders map[protocol.PathID]*congestion.OliaSender) {
 	p.rttStats = &congestion.RTTStats{}
+	// initial ackPathID = pathID
+	p.ackPathID = p.pathID
 
 	var cong congestion.SendAlgorithm
 
@@ -198,7 +201,7 @@ func (p *path) handlePacketImpl(pkt *receivedPacket) error {
 		hdr.PacketNumber,
 	)
 
-	packet, err := p.sess.unpacker.Unpack(hdr.Raw, hdr, data)
+	packet, err := p.sess.unpacker.Unpack(hdr.Raw, hdr, data, p.pathID)
 	if utils.Debug() {
 		if err != nil {
 			utils.Debugf("<- Reading packet 0x%x (%d bytes) for connection %x on path %x", hdr.PacketNumber, len(data)+len(hdr.Raw), hdr.ConnectionID, p.pathID)

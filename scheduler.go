@@ -12,6 +12,7 @@ import (
 type scheduler struct {
 	// XXX Currently round-robin based, inspired from MPTCP scheduler
 	quotas map[protocol.PathID]uint
+	delay map[protocol.PathID]time.Duration
 }
 
 func (sch *scheduler) setup() {
