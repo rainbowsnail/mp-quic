@@ -11,6 +11,7 @@ import (
 
 type scheduler struct {
 	// XXX Currently round-robin based, inspired from MPTCP scheduler
+	lastAckDupTime time.Time
 	quotas map[protocol.PathID]uint
 	delay map[protocol.PathID]time.Duration
 }

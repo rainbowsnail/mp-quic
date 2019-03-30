@@ -631,7 +631,11 @@ func (s *session) handleRstStreamFrame(frame *wire.RstStreamFrame) error {
 
 func (s *session) handleAckFrame(frame *wire.AckFrame) error {
 	pth := s.paths[frame.PathID]
-	err := pth.sentPacketHandler.ReceivedAck(frame, pth.lastRcvdPacketNumber, pth.lastNetworkActivityTime)
+	err, returnPathRttUpdated := pth.sentPacketHandler.ReceivedAck(frame, pth.lastRcvdPacketNumber, pth.lastNetworkActivityTime, pth.ackPathID)
+	if err == nil && returnPathRttUpdated{
+		// Choose new ack return path
+		returnPathUpdated = pth.updateReturnPath()
+	}
 	if err == nil && pth.rttStats.SmoothedRTT() > s.rttStats.SmoothedRTT() {
 		// Update the session RTT, which comes to take the max RTT on all paths
 		s.rttStats.UpdateSessionRTT(pth.rttStats.SmoothedRTT())

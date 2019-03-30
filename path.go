@@ -24,6 +24,7 @@ type path struct {
 	sess   *session
 
 	rttStats *congestion.RTTStats
+	rttStatsPaths map[protocol.PathID]*congestion.RTTStats
 
 	sentPacketHandler     ackhandler.SentPacketHandler
 	receivedPacketHandler ackhandler.ReceivedPacketHandler
@@ -64,7 +65,7 @@ func (p *path) setup(oliaSenders map[protocol.PathID]*congestion.OliaSender) {
 		oliaSenders[p.pathID] = cong.(*congestion.OliaSender)
 	}
 
-	sentPacketHandler := ackhandler.NewSentPacketHandler(p.rttStats, cong, p.onRTO)
+	sentPacketHandler := ackhandler.NewSentPacketHandler(p.rttStats, cong, p.onRTO, p.rttStatsPaths)
 
 	now := time.Now()
 
@@ -124,6 +125,17 @@ runLoop:
 	}
 	p.close()
 	p.runClosed <- struct{}{}
+}
+
+// Update Return Ack Path if any other Path's RTT is smaller
+func (p* path) UpdateReturnPath() bool {
+	for pathID, rttStats in range p.rttStatsPaths{
+		if rttStats.smoothedRTT != 0 && p.rttStats.smoothedRTT > rttStats.smoothedRTT {
+			p.ackPathID = pathID
+			return true
+		}
+	}
+	return false
 }
 
 func (p *path) SendingAllowed() bool {
