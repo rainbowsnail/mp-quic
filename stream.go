@@ -24,7 +24,8 @@ type stream struct {
 	ctxCancel context.CancelFunc
 
 	streamID protocol.StreamID
-	onData   func()
+	// Tiny: onData now pass the stream itself
+	onData func(*stream)
 	// onReset is a callback that should send a RST_STREAM
 	onReset func(protocol.StreamID, protocol.ByteCount)
 
@@ -71,7 +72,7 @@ var errDeadline net.Error = &deadlineError{}
 
 // newStream creates a new Stream
 func newStream(StreamID protocol.StreamID,
-	onData func(),
+	onData func(*stream),
 	onReset func(protocol.StreamID, protocol.ByteCount),
 	flowControlManager flowcontrol.FlowControlManager) *stream {
 	s := &stream{
@@ -164,7 +165,7 @@ func (s *stream) Read(p []byte) (int, error) {
 		if !s.resetRemotely.Get() {
 			s.flowControlManager.AddBytesRead(s.streamID, protocol.ByteCount(m))
 		}
-		s.onData() // so that a possible WINDOW_UPDATE is sent
+		s.onData(s) // so that a possible WINDOW_UPDATE is sent
 
 		if s.readPosInFrame >= int(frame.DataLen()) {
 			fin := frame.FinBit
@@ -197,7 +198,11 @@ func (s *stream) Write(p []byte) (int, error) {
 
 	s.dataForWriting = make([]byte, len(p))
 	copy(s.dataForWriting, p)
-	s.onData()
+
+	// Tiny: put onData outside critical area to avoid dead lock
+	s.mutex.Unlock()
+	s.onData(s)
+	s.mutex.Lock()
 
 	var err error
 	for {
@@ -266,7 +271,7 @@ func (s *stream) getDataForWriting(maxBytes protocol.ByteCount) []byte {
 func (s *stream) Close() error {
 	s.finishedWriting.Set(true)
 	s.ctxCancel()
-	s.onData()
+	s.onData(s)
 	return nil
 }
 
