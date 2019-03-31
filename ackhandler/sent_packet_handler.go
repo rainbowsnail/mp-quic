@@ -634,3 +634,4 @@ func (h *sentPacketHandler) garbageCollectSkippedPackets() {
 	}
 	h.skippedPackets = h.skippedPackets[deleteIndex:]
 }
+

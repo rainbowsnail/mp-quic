@@ -510,6 +510,8 @@ func (s *session) handleFrames(fs []wire.Frame, p *path) error {
 			err = s.handleStreamFrame(frame)
 		case *wire.AckFrame:
 			err = s.handleAckFrame(frame)
+		case *wire.ChangeAckPathFrame:
+			err = s.handleAckReturnPathFrame(frame)
 		case *wire.ConnectionCloseFrame:
 			s.closeRemote(qerr.Error(frame.ErrorCode, frame.ReasonPhrase))
 		case *wire.GoawayFrame:
@@ -602,6 +604,14 @@ func (s *session) handleStreamFrame(frame *wire.StreamFrame) error {
 	return str.AddStreamFrame(frame)
 }
 
+func (s *session) handleAckReturnPathFrame(frame *wire.ChangeAckPathFrame) error {
+	// TODO: check time and other error
+	for pathID, ackRtnPath in range ackReturnPaths{
+		s.paths[pathID].ackPathID = ackRtnPath
+	}
+	return nil
+}
+
 func (s *session) handleWindowUpdateFrame(frame *wire.WindowUpdateFrame) error {
 	if frame.StreamID != 0 {
 		str, err := s.streamsMap.GetOrOpenStream(frame.StreamID)
@@ -635,6 +645,9 @@ func (s *session) handleAckFrame(frame *wire.AckFrame) error {
 	if err == nil && returnPathRttUpdated{
 		// Choose new ack return path
 		returnPathUpdated = pth.updateReturnPath()
+		if returnPathUpdated == true {
+			s.streamFramer.returnPathUpdated(s)
+		}
 	}
 	if err == nil && pth.rttStats.SmoothedRTT() > s.rttStats.SmoothedRTT() {
 		// Update the session RTT, which comes to take the max RTT on all paths

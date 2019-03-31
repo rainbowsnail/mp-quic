@@ -20,6 +20,7 @@ type streamFramer struct {
 	addAddressFrameQueue []*wire.AddAddressFrame
 	closePathFrameQueue  []*wire.ClosePathFrame
 	pathsFrame           *wire.PathsFrame
+	ackReturnPathFrame	 *wire.ChangeAckPathFrame
 }
 
 func newStreamFramer(streamsMap *streamsMap, flowControlManager flowcontrol.FlowControlManager) *streamFramer {
@@ -57,6 +58,32 @@ func (f *streamFramer) PopAddAddressFrame() *wire.AddAddressFrame {
 	}
 	frame := f.addAddressFrameQueue[0]
 	f.addAddressFrameQueue = f.addAddressFrameQueue[1:]
+	return frame
+}
+
+func (f *streamFramer) AddAckReturnPathFrame(s *session) {
+	ackReturnPaths := make(map[protocol.PathID]*path)
+
+	for pathID, p in range s.paths{
+		if p.updateAckPathID == true{
+			ackReturnPaths[pathID] = p.ackPathID
+		}
+	}
+	if len(ackReturnPaths) == 0 {
+		return nil
+	}
+
+	f.ackReturnPathFrame = &wire.ChangeAckPathFrame{
+		ackReturnPaths:	ackReturnPaths
+	}
+}
+
+func (f *streamFramer) PopAckReturnPathFrame() *wire.ChangeAckPathFrame {
+	if f.ackReturnPathFrame == nil {
+		return nil
+	}
+	frame := f.ackReturnPathFrame
+	f.ackReturnPathFrame = nil
 	return frame
 }
 

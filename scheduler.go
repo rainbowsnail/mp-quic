@@ -11,9 +11,10 @@ import (
 
 type scheduler struct {
 	// XXX Currently round-robin based, inspired from MPTCP scheduler
-	lastAckDupTime time.Time
-	quotas map[protocol.PathID]uint
-	delay map[protocol.PathID]time.Duration
+	lastAckDupTime 	time.Time
+	quotas 			map[protocol.PathID]uint
+	delay 			map[protocol.PathID]time.Duration
+	timer           *utils.Timer
 }
 
 func (sch *scheduler) setup() {
@@ -376,7 +377,11 @@ func (sch *scheduler) sendPacket(s *session) error {
 				s.packer.QueueControlFrame(swf, pth)
 			}
 		}
-
+		
+		// Also add ACK RETURN PATHS frames, if any
+		for arpf := s.streamFramer.PopAckReturnPathsFrame(); pf != nil; pf = s.streamFramer.PopAckReturnPathsFrame() {
+			s.packer.QueueControlFrame(arpf, pth)
+		}
 		// Also add CLOSE_PATH frames, if any
 		for cpf := s.streamFramer.PopClosePathFrame(); cpf != nil; cpf = s.streamFramer.PopClosePathFrame() {
 			s.packer.QueueControlFrame(cpf, pth)

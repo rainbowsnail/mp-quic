@@ -16,12 +16,15 @@ var (
 
 type ChangeAckPathFrame struct {
 	ackReturnPaths map[protocol.PathID]protocol.PathID
-	PacketReceivedTime time.Time
+	//PacketReceivedTime time.Time
 }
 
 // parse Change Ack Path Frame after 
 func ParseChangeAckPathFrame(r *bytes.Reader, version protocol.VersionNumber) (*ChangeAckPathFrame, error) {
-	frame := &ChangeAckPathFrame{}
+	frame := &ChangeAckPathFrame{
+		ackReturnPaths:	make(map[protocol.PathID]*path)
+		//PacketReceivedTime: time.Now()
+	}
 	var numPathToChange uint8
 	numPathToChange, err = r.ReadByte()
 	if err != nil {

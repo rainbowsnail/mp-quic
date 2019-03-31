@@ -20,6 +20,7 @@ const (
 type path struct {
 	pathID protocol.PathID
 	ackPathID protocol.PathID
+	updateAckPathID bool
 	conn   connection
 	sess   *session
 
@@ -132,6 +133,7 @@ func (p* path) UpdateReturnPath() bool {
 	for pathID, rttStats in range p.rttStatsPaths{
 		if rttStats.smoothedRTT != 0 && p.rttStats.smoothedRTT > rttStats.smoothedRTT {
 			p.ackPathID = pathID
+			updateAckPathID = true
 			return true
 		}
 	}
