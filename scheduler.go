@@ -8,17 +8,46 @@ import (
 	"github.com/lucas-clemente/quic-go/internal/utils"
 	"github.com/lucas-clemente/quic-go/internal/wire"
 )
-
+const (
+	ackPathChangeTimer = 3 * time.Second
+)
 type scheduler struct {
 	// XXX Currently round-robin based, inspired from MPTCP scheduler
 	lastAckDupTime 	time.Time
 	quotas 			map[protocol.PathID]uint
 	delay 			map[protocol.PathID]time.Duration
+	lastDupAckTime  time.Time
+	shouldDupAck	utils.AtomicBool
 	timer           *utils.Timer
 }
 
 func (sch *scheduler) setup() {
 	sch.quotas = make(map[protocol.PathID]uint)
+	sch.delay = make(map[protocol.PathID]time.Duration)
+	now := time.Now()
+	sch.lastDupAckTime = now
+	sch.timer = utils.NewTimer()
+}
+
+func (sch *scheduler) run() {
+	// XXX (QDC): relay everything to the session, maybe not the most efficient
+runLoop:
+	for {
+		sch.timer.maybeResetTimer()
+
+		select {
+		case <-sch.timer.Chan():
+			sch.timer.SetRead()
+			sch.shouldDupAck.Set(true)
+			sch.timer.maybeResetTimer()
+		}
+	}
+}
+
+func (sch *scheduler) maybeResetTimer() {
+	deadline := sch.lastDupAckTime.Add(ackPathChangeTimer)
+	deadline = utils.MaxTime(deadline, time.Now())
+	sch.timer.Reset(deadline)
 }
 
 func (sch *scheduler) getRetransmission(s *session) (hasRetransmission bool, retransmitPacket *ackhandler.Packet, pth *path) {
@@ -368,6 +397,8 @@ func (sch *scheduler) sendPacket(s *session) error {
 		var ack *wire.AckFrame
 
 		ack = pth.GetAckFrame()
+		// TODO-Jing: ack packets on other path and dup ack 
+
 		if ack != nil {
 			s.packer.QueueControlFrame(ack, pth)
 		}
