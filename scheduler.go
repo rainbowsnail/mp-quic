@@ -14,16 +14,22 @@ const (
 type scheduler struct {
 	// XXX Currently round-robin based, inspired from MPTCP scheduler
 	lastAckDupTime 	time.Time
-	quotas 			map[protocol.PathID]uint
-	delay 			map[protocol.PathID]time.Duration
-	lastDupAckTime  time.Time
-	shouldDupAck	utils.AtomicBool
-	timer           *utils.Timer
+	quotas 				map[protocol.PathID]uint
+	delay 				map[protocol.PathID]time.Duration
+	shouldSendDupAck	map[protocol.PathID]bool
+
+	dupAckFrame			*wire.AckFrame
+	lastDupAckTime		time.Time
+	timer           	*utils.Timer
+	shouldInstigateDupAck	utils.AtomicBool
 }
 
 func (sch *scheduler) setup() {
 	sch.quotas = make(map[protocol.PathID]uint)
 	sch.delay = make(map[protocol.PathID]time.Duration)
+	sch.shouldSendDupAck = make(map[protocol.PathID]bool)
+	sch.dupAckFrame = nil
+	sch.shouldInstigateDupAck.set(false)
 	now := time.Now()
 	sch.lastDupAckTime = now
 	sch.timer = utils.NewTimer()
@@ -38,7 +44,7 @@ runLoop:
 		select {
 		case <-sch.timer.Chan():
 			sch.timer.SetRead()
-			sch.shouldDupAck.Set(true)
+			sch.shouldInstigateDupAck.Set(true)
 			sch.timer.maybeResetTimer()
 		}
 	}
@@ -396,16 +402,34 @@ func (sch *scheduler) sendPacket(s *session) error {
 		// XXX Some automatic ACK generation should be done someway
 		var ack *wire.AckFrame
 
-		ack = pth.GetAckFrame()
-		// TODO-Jing: ack packets on other path and dup ack 
-
-		if ack != nil {
-			s.packer.QueueControlFrame(ack, pth)
+		//ack = pth.GetAckFrame()
+		for tmpPathID, tmpPath in range paths{
+			ack = tmpPath.GetAckFrameOnPath(pth.pathID)
+			// TODO-Jing: ack packets on other path and dup ack 
+			if ack != nil && shouldInstigateDupAck.Get() == true{
+				shouldInstigateDupAck.Set(false)
+				
+				for pathID, p in range paths{
+					if p != pth{
+						shouldSendDupAck[pathID] = true
+					}
+				}
+			}
+			if ack != nil {
+				s.packer.QueueControlFrame(ack, pth)
+			}
+			if ack != nil || hasStreamRetransmission {
+				swf := pth.sentPacketHandler.GetStopWaitingFrame(hasStreamRetransmission)
+				if swf != nil {
+					s.packer.QueueControlFrame(swf, pth)
+				}
+			}
 		}
-		if ack != nil || hasStreamRetransmission {
-			swf := pth.sentPacketHandler.GetStopWaitingFrame(hasStreamRetransmission)
-			if swf != nil {
+		
+		if shouldSendDupAckOnPath, ok := shouldSendDupAck[pth.pathID]; ok {
+			if shouldSendDupAckOnPath {
 				s.packer.QueueControlFrame(swf, pth)
+				shouldSendDupAck[pth.pathID] = false
 			}
 		}
 		

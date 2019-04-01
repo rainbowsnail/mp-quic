@@ -148,6 +148,18 @@ func (p *path) GetStopWaitingFrame(force bool) *wire.StopWaitingFrame {
 	return p.sentPacketHandler.GetStopWaitingFrame(force)
 }
 
+func (p *path) GetAckFrameOnPath(pathID protocol.PathID) *wire.AckFrame {
+	if pathID != p.ackPathID{
+		return nil
+	}
+	ack := p.receivedPacketHandler.GetAckFrame()
+	if ack != nil {
+		ack.PathID = p.pathID
+	}
+
+	return ack
+}
+
 func (p *path) GetAckFrame() *wire.AckFrame {
 	ack := p.receivedPacketHandler.GetAckFrame()
 	if ack != nil {
