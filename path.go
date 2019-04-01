@@ -49,6 +49,7 @@ type path struct {
 
 	timer *utils.Timer
 
+	// Tiny: I don't know if these fields should appear here or in the scheduler
 	allocStream map[protocol.StreamID]protocol.ByteCount
 }
 

@@ -318,8 +318,8 @@ func (sch *scheduler) allocateStream(s *session, str *stream) {
 	if bytes <= 0 {
 		return
 	}
-	// Tiny: we dont have information now, just average the data
 	s.pathsLock.RLock()
+	// TODO
 	cnt := len(s.paths)
 	avg := bytes / protocol.ByteCount(cnt)
 	for _, pth := range s.paths {

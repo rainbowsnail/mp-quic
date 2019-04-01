@@ -1,6 +1,7 @@
 package ackhandler
 
 import (
+	"github.com/lucas-clemente/quic-go/congestion"
 	"time"
 
 	"github.com/lucas-clemente/quic-go/internal/protocol"
@@ -29,6 +30,7 @@ type SentPacketHandler interface {
 	DuplicatePacket(packet *Packet)
 
 	GetStatistics() (uint64, uint64, uint64)
+	GetBandwidthEstimate() congestion.Bandwidth
 }
 
 // ReceivedPacketHandler handles ACKs needed to send for incoming packets

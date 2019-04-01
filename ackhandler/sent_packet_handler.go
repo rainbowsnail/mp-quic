@@ -264,6 +264,15 @@ func (h *sentPacketHandler) ReceivedClosePath(f *wire.ClosePathFrame, withPacket
 	return nil
 }
 
+func (h *sentPacketHandler) GetBandwidthEstimate() congestion.Bandwidth {
+	// Tiny: copy from OliaSender.BandwidthEstimate
+	srtt := h.rttStats.SmoothedRTT()
+	if srtt == 0 {
+		return 0
+	}
+	return congestion.BandwidthFromDelta(h.congestion.GetCongestionWindow(), srtt)
+}
+
 func (h *sentPacketHandler) determineNewlyAckedPackets(ackFrame *wire.AckFrame) ([]*PacketElement, error) {
 	var ackedPackets []*PacketElement
 	ackRangeIndex := 0
