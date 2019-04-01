@@ -313,6 +313,27 @@ func (sch *scheduler) ackRemainingPaths(s *session, totalWindowUpdateFrames []*w
 	return nil
 }
 
+func (sch *scheduler) allocateStream(s *session, str *stream) {
+	bytes := str.lenOfDataForWriting()
+	if bytes <= 0 {
+		return
+	}
+	// Tiny: we dont have information now, just average the data
+	s.pathsLock.RLock()
+	cnt := len(s.paths)
+	avg := bytes / protocol.ByteCount(cnt)
+	for _, pth := range s.paths {
+		cnt--
+		if cnt > 0 {
+			pth.AllocateStream(str.streamID, avg)
+			bytes -= avg
+		} else {
+			pth.AllocateStream(str.streamID, bytes)
+		}
+	}
+	s.pathsLock.RUnlock()
+}
+
 func (sch *scheduler) sendPacket(s *session) error {
 	var pth *path
 

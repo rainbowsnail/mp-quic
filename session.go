@@ -868,11 +868,7 @@ func (s *session) queueResetStreamFrame(id protocol.StreamID, offset protocol.By
 // Tiny: onStreamData first notify scheduler the data on stream for allocation
 //       then scheduleSending as normal
 func (s *session) onStreamData(str *stream) {
-	// TODO
-	len := str.lenOfDataForWriting()
-	if len > 0 {
-		utils.Infof("stream %v onData: %v", str.streamID, len)
-	}
+	s.scheduler.allocateStream(s, str)
 	s.scheduleSending()
 }
 
