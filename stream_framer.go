@@ -61,24 +61,23 @@ func (f *streamFramer) PopAddAddressFrame() *wire.AddAddressFrame {
 	return frame
 }
 
-func (f *streamFramer) AddAckReturnPathFrame(s *session) {
-	ackReturnPaths := make(map[protocol.PathID]*path)
+func (f *streamFramer) AddAckReturnPathsFrame(s *session) {
+	ackReturnPaths := make(map[protocol.PathID]protocol.PathID)
 
-	for pathID, p in range s.paths{
+	for pathID, p := range s.paths{
 		if p.updateAckPathID == true{
 			ackReturnPaths[pathID] = p.ackPathID
 		}
 	}
-	if len(ackReturnPaths) == 0 {
-		return nil
-	}
+	if len(ackReturnPaths) != 0 {
 
-	f.ackReturnPathFrame = &wire.ChangeAckPathFrame{
-		ackReturnPaths:	ackReturnPaths
+		f.ackReturnPathFrame = &wire.ChangeAckPathFrame{
+			AckReturnPaths:	ackReturnPaths,
+		}
 	}
 }
 
-func (f *streamFramer) PopAckReturnPathFrame() *wire.ChangeAckPathFrame {
+func (f *streamFramer) PopAckReturnPathsFrame() *wire.ChangeAckPathFrame {
 	if f.ackReturnPathFrame == nil {
 		return nil
 	}

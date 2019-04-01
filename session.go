@@ -20,7 +20,7 @@ import (
 )
 
 type unpacker interface {
-	Unpack(publicHeaderBinary []byte, hdr *wire.PublicHeader, data []byte) (*unpackedPacket, error)
+	Unpack(publicHeaderBinary []byte, hdr *wire.PublicHeader, data []byte, pathID protocol.PathID) (*unpackedPacket, error)
 }
 
 type receivedPacket struct {
@@ -606,7 +606,7 @@ func (s *session) handleStreamFrame(frame *wire.StreamFrame) error {
 
 func (s *session) handleAckReturnPathFrame(frame *wire.ChangeAckPathFrame) error {
 	// TODO: check time and other error
-	for pathID, ackRtnPath in range ackReturnPaths{
+	for pathID, ackRtnPath := range frame.AckReturnPaths{
 		s.paths[pathID].ackPathID = ackRtnPath
 	}
 	return nil
@@ -644,9 +644,9 @@ func (s *session) handleAckFrame(frame *wire.AckFrame) error {
 	err, returnPathRttUpdated := pth.sentPacketHandler.ReceivedAck(frame, pth.lastRcvdPacketNumber, pth.lastNetworkActivityTime, pth.ackPathID)
 	if err == nil && returnPathRttUpdated{
 		// Choose new ack return path
-		returnPathUpdated = pth.updateReturnPath()
+		returnPathUpdated := pth.UpdateReturnPath()
 		if returnPathUpdated == true {
-			s.streamFramer.returnPathUpdated(s)
+			s.streamFramer.AddAckReturnPathsFrame(s)
 		}
 	}
 	if err == nil && pth.rttStats.SmoothedRTT() > s.rttStats.SmoothedRTT() {

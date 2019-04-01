@@ -29,7 +29,7 @@ func (sch *scheduler) setup() {
 	sch.delay = make(map[protocol.PathID]time.Duration)
 	sch.shouldSendDupAck = make(map[protocol.PathID]bool)
 	sch.dupAckFrame = nil
-	sch.shouldInstigateDupAck.set(false)
+	sch.shouldInstigateDupAck.Set(false)
 	now := time.Now()
 	sch.lastDupAckTime = now
 	sch.timer = utils.NewTimer()
@@ -37,15 +37,15 @@ func (sch *scheduler) setup() {
 
 func (sch *scheduler) run() {
 	// XXX (QDC): relay everything to the session, maybe not the most efficient
-runLoop:
+//runLoop:
 	for {
-		sch.timer.maybeResetTimer()
+		sch.maybeResetTimer()
 
 		select {
 		case <-sch.timer.Chan():
 			sch.timer.SetRead()
 			sch.shouldInstigateDupAck.Set(true)
-			sch.timer.maybeResetTimer()
+			sch.maybeResetTimer()
 		}
 	}
 }
@@ -403,15 +403,15 @@ func (sch *scheduler) sendPacket(s *session) error {
 		var ack *wire.AckFrame
 
 		//ack = pth.GetAckFrame()
-		for tmpPathID, tmpPath in range paths{
+		for _, tmpPath := range s.paths{
 			ack = tmpPath.GetAckFrameOnPath(pth.pathID)
 			// TODO-Jing: ack packets on other path and dup ack 
-			if ack != nil && shouldInstigateDupAck.Get() == true{
-				shouldInstigateDupAck.Set(false)
+			if ack != nil && sch.shouldInstigateDupAck.Get() {
+				sch.shouldInstigateDupAck.Set(false)
 				
-				for pathID, p in range paths{
-					if p != pth{
-						shouldSendDupAck[pathID] = true
+				for pathID, p := range s.paths{
+					if p != pth {
+						sch.shouldSendDupAck[pathID] = true
 					}
 				}
 			}
@@ -426,15 +426,15 @@ func (sch *scheduler) sendPacket(s *session) error {
 			}
 		}
 		
-		if shouldSendDupAckOnPath, ok := shouldSendDupAck[pth.pathID]; ok {
+		if shouldSendDupAckOnPath, ok := sch.shouldSendDupAck[pth.pathID]; ok {
 			if shouldSendDupAckOnPath {
-				s.packer.QueueControlFrame(swf, pth)
-				shouldSendDupAck[pth.pathID] = false
+				s.packer.QueueControlFrame(sch.dupAckFrame, pth)
+				sch.shouldSendDupAck[pth.pathID] = false
 			}
 		}
 		
 		// Also add ACK RETURN PATHS frames, if any
-		for arpf := s.streamFramer.PopAckReturnPathsFrame(); pf != nil; pf = s.streamFramer.PopAckReturnPathsFrame() {
+		for arpf := s.streamFramer.PopAckReturnPathsFrame(); arpf != nil; arpf = s.streamFramer.PopAckReturnPathsFrame() {
 			s.packer.QueueControlFrame(arpf, pth)
 		}
 		// Also add CLOSE_PATH frames, if any

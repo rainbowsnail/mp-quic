@@ -3,10 +3,10 @@ package wire
 import (
 	"bytes"
 	"errors"
-	"time"
+	//"time"
 
 	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/utils"
+	//"github.com/lucas-clemente/quic-go/internal/utils"
 )
 
 var (
@@ -15,42 +15,52 @@ var (
 )
 
 type ChangeAckPathFrame struct {
-	ackReturnPaths map[protocol.PathID]protocol.PathID
+	AckReturnPaths map[protocol.PathID]protocol.PathID
 	//PacketReceivedTime time.Time
 }
 
 // parse Change Ack Path Frame after 
 func ParseChangeAckPathFrame(r *bytes.Reader, version protocol.VersionNumber) (*ChangeAckPathFrame, error) {
 	frame := &ChangeAckPathFrame{
-		ackReturnPaths:	make(map[protocol.PathID]*path)
+		//ackReturnPaths:	make(map[protocol.PathID] protocol.PathID)
 		//PacketReceivedTime: time.Now()
 	}
+	frame.AckReturnPaths = make(map[protocol.PathID] protocol.PathID)
 	var numPathToChange uint8
+	var err error
+
 	numPathToChange, err = r.ReadByte()
 	if err != nil {
 		return nil, err
 	}
+	var pathID protocol.PathID
+	var uint8PathID uint8
 	for i := uint8(0); i < numPathToChange; i++ {
-		pathID, err = r.ReadByte()
+		uint8PathID, err = r.ReadByte()
 		if err != nil {
 			return nil, err
 		}
-		ackReturnPathID, err = r.ReadByte()
+		pathID = protocol.PathID(uint8PathID)
+
+		var ackReturnPathID protocol.PathID
+		var uint8AckReturnPathID uint8
+		uint8AckReturnPathID, err = r.ReadByte()
 		if err != nil {
 			return nil, err
 		}
-		frame.ackReturnPaths[protocol.PathID(pathID)] = protocol.PathID(ackReturnPathID)
+		ackReturnPathID = protocol.PathID(uint8AckReturnPathID)
+		frame.AckReturnPaths[protocol.PathID(pathID)] = protocol.PathID(ackReturnPathID)
 	}
-	return frame
+	return frame, nil
 }
 
 // Write writes an Change Ack Path frame.
 func (f *ChangeAckPathFrame) Write(b *bytes.Buffer, version protocol.VersionNumber) error {
 	var numPathToChange uint8
-	numPathToChange = len(f.ackReturnPaths)
+	numPathToChange = uint8(len(f.AckReturnPaths))
 	b.WriteByte(numPathToChange)
-	for pathID, ackReturnPathID := range f.ackReturnPaths {
-		b.WriteByte(uint8(PathID))
+	for pathID, ackReturnPathID := range f.AckReturnPaths {
+		b.WriteByte(uint8(pathID))
 		b.WriteByte(uint8(ackReturnPathID))
 	}
 	return nil

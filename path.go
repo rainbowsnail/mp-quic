@@ -56,6 +56,7 @@ type path struct {
 // setup initializes values that are independent of the perspective
 func (p *path) setup(oliaSenders map[protocol.PathID]*congestion.OliaSender) {
 	p.rttStats = &congestion.RTTStats{}
+	p.rttStatsPaths = make(map[protocol.PathID]*congestion.RTTStats)
 	// initial ackPathID = pathID
 	p.ackPathID = p.pathID
 
@@ -66,7 +67,7 @@ func (p *path) setup(oliaSenders map[protocol.PathID]*congestion.OliaSender) {
 		oliaSenders[p.pathID] = cong.(*congestion.OliaSender)
 	}
 
-	sentPacketHandler := ackhandler.NewSentPacketHandler(p.rttStats, cong, p.onRTO, p.rttStatsPaths)
+	sentPacketHandler := ackhandler.NewSentPacketHandler(p.rttStats, p.rttStatsPaths, cong, p.onRTO)
 
 	now := time.Now()
 
@@ -130,10 +131,10 @@ runLoop:
 
 // Update Return Ack Path if any other Path's RTT is smaller
 func (p* path) UpdateReturnPath() bool {
-	for pathID, rttStats in range p.rttStatsPaths{
-		if rttStats.smoothedRTT != 0 && p.rttStats.smoothedRTT > rttStats.smoothedRTT {
+	for pathID, rttStats := range p.rttStatsPaths{
+		if rttStats.SmoothedRTT() != 0 && p.rttStats.SmoothedRTT() > rttStats.SmoothedRTT() {
 			p.ackPathID = pathID
-			updateAckPathID = true
+			p.updateAckPathID = true
 			return true
 		}
 	}
