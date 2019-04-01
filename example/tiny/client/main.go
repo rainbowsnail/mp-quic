@@ -23,11 +23,14 @@ func testRequest() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer resp.Body.Close()
+
 	body := &bytes.Buffer{}
 	_, err = io.Copy(body, resp.Body)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	log.Println(body.Len())
 }
 

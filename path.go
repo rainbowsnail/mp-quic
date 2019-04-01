@@ -255,9 +255,38 @@ func (p *path) SetLeastUnacked(leastUnacked protocol.PacketNumber) {
 }
 
 func (p *path) AllocateStream(streamID protocol.StreamID, bytes protocol.ByteCount) {
-	if b, ok := p.allocStream[streamID]; ok && b > 0 {
-		utils.Errorf("duplicate allocate stream, ignore")
+	if bytes <= 0 {
 		return
 	}
-	p.allocStream[streamID] = bytes
+	if b, ok := p.allocStream[streamID]; ok && b > 0 {
+		utils.Errorf("duplicate allocate stream %v, ignore", streamID)
+	} else {
+		p.allocStream[streamID] = bytes
+	}
+}
+
+func (p *path) GetStreamBytes(streamID protocol.StreamID) protocol.ByteCount {
+	if b, ok := p.allocStream[streamID]; ok {
+		utils.Infof("path %v stream %v bytes %v", p.pathID, streamID, b)
+		return b
+	}
+	utils.Errorf("try get stream %v not allocated", streamID)
+	return protocol.MaxByteCount
+}
+
+func (p *path) RemoveStreamBytes(streamID protocol.StreamID, bytes protocol.ByteCount) {
+	if bytes <= 0 {
+		return
+	}
+	if b, ok := p.allocStream[streamID]; ok {
+		if b <= bytes {
+			if b < bytes {
+				utils.Errorf("try remove stream %v more bytes than allocated", streamID)
+			}
+			delete(p.allocStream, streamID)
+		}
+		p.allocStream[streamID] = b - bytes
+	} else {
+		utils.Errorf("try remove stream %v not allocated %v", streamID, bytes)
+	}
 }

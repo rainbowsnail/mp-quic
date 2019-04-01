@@ -868,7 +868,10 @@ func (s *session) queueResetStreamFrame(id protocol.StreamID, offset protocol.By
 // Tiny: onStreamData first notify scheduler the data on stream for allocation
 //       then scheduleSending as normal
 func (s *session) onStreamData(str *stream) {
-	s.scheduler.allocateStream(s, str)
+	// Tiny:m ignore crypto stream
+	if str.streamID != 1 {
+		s.scheduler.allocateStream(s, str)
+	}
 	s.scheduleSending()
 }
 

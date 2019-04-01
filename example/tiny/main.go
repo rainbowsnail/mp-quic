@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	buf [268435456]byte
+	buf [2048]byte
 )
 
 func handle(resp http.ResponseWriter, req *http.Request) {

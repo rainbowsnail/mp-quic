@@ -33,9 +33,9 @@ func (f *streamFramer) AddFrameForRetransmission(frame *wire.StreamFrame) {
 	f.retransmissionQueue = append(f.retransmissionQueue, frame)
 }
 
-func (f *streamFramer) PopStreamFrames(maxLen protocol.ByteCount) []*wire.StreamFrame {
+func (f *streamFramer) PopStreamFrames(maxLen protocol.ByteCount, pth *path) []*wire.StreamFrame {
 	fs, currentLen := f.maybePopFramesForRetransmission(maxLen)
-	return append(fs, f.maybePopNormalFrames(maxLen-currentLen)...)
+	return append(fs, f.maybePopNormalFrames(maxLen-currentLen, pth)...)
 }
 
 func (f *streamFramer) PopBlockedFrame() *wire.BlockedFrame {
@@ -162,7 +162,7 @@ func (f *streamFramer) maybePopFramesForRetransmission(maxLen protocol.ByteCount
 	return
 }
 
-func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount) (res []*wire.StreamFrame) {
+func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *path) (res []*wire.StreamFrame) {
 	frame := &wire.StreamFrame{DataLenPresent: true}
 	var currentLen protocol.ByteCount
 
@@ -185,6 +185,11 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount) (res []
 		if lenStreamData != 0 {
 			sendWindowSize, _ = f.flowControlManager.SendWindowSize(s.streamID)
 			maxLen = utils.MinByteCount(maxLen, sendWindowSize)
+
+			// Tiny: FIXME currently the first packet will fail, maybe a race condition
+			pathBytes := pth.GetStreamBytes(s.streamID)
+			maxLen = utils.MinByteCount(maxLen, pathBytes)
+			// utils.Infof("%v", pathBytes)
 		}
 
 		if maxLen == 0 {
@@ -211,6 +216,7 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount) (res []
 
 		frame.Data = data
 		f.flowControlManager.AddBytesSent(s.streamID, protocol.ByteCount(len(data)))
+		pth.RemoveStreamBytes(s.streamID, protocol.ByteCount(len(data)))
 
 		// Finally, check if we are now FC blocked and should queue a BLOCKED frame
 		if f.flowControlManager.RemainingConnectionWindowSize() == 0 {
