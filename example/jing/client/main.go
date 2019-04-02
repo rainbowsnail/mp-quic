@@ -3,38 +3,72 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
+	"flag"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"sync"
+	"time"
 
-	"github.com/lucas-clemente/quic-go"
+	quic "github.com/lucas-clemente/quic-go"
+
 	"github.com/lucas-clemente/quic-go/h2quic"
 	"github.com/lucas-clemente/quic-go/internal/utils"
 )
 
-func testRequest() {
-	client := &http.Client{
-		Transport: &h2quic.RoundTripper{
-			QuicConfig:      &quic.Config{CreatePaths: true},
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-	}
-	resp, err := client.Get("https://127.0.0.1:6121")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	body := &bytes.Buffer{}
-	_, err = io.Copy(body, resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println(body.Len())
-}
-
 func main() {
-	utils.SetLogLevel(utils.LogLevelInfo)
-	testRequest()
+	verbose := flag.Bool("v", true, "verbose")
+	multipath := flag.Bool("m", true, "multipath")
+	output := flag.String("o", "client.log", "logging output")
+	cache := flag.Bool("c", false, "cache handshake information")
+	flag.Parse()
+	urls := flag.Args()
+
+	if *verbose {
+		utils.SetLogLevel(utils.LogLevelDebug)
+	} else {
+		utils.SetLogLevel(utils.LogLevelInfo)
+	}
+
+	if *output != "" {
+		logfile, err := os.Create(*output)
+		if err != nil {
+			panic(err)
+		}
+		defer logfile.Close()
+		log.SetOutput(logfile)
+	}
+
+	quicConfig := &quic.Config{
+		CreatePaths: *multipath,
+		CacheHandshake: *cache,
+	}
+
+	hclient := &http.Client{
+		Transport: &h2quic.RoundTripper{QuicConfig: quicConfig, TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(urls))
+	for _, addr := range urls {
+		utils.Infof("GET %s", addr)
+		go func(addr string) {
+			start := time.Now()
+			rsp, err := hclient.Get(addr)
+			if err != nil {
+				panic(err)
+			}
+
+			body := &bytes.Buffer{}
+			_, err = io.Copy(body, rsp.Body)
+			if err != nil {
+				panic(err)
+			}
+			elapsed := time.Since(start)
+			utils.Infof("%s", elapsed)
+			wg.Done()
+		}(addr)
+	}
+	wg.Wait()
 }
