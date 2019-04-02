@@ -131,15 +131,15 @@ runLoop:
 
 // Update Return Ack Path if any other Path's RTT is smaller
 func (p* path) UpdateReturnPath() bool {
-	smallestRTT = p.rttStats.SmoothedRTT()
-	smallestPathID = p.ackPathID
+	smallestRTT := p.rttStats.SmoothedRTT()
+	smallestPathID := p.ackPathID
 	for pathID, rttStats := range p.rttStatsPaths{
 		if rttStats.SmoothedRTT() != 0 && smallestRTT > rttStats.SmoothedRTT() {
 			smallestRTT = rttStats.SmoothedRTT()
 			smallestPathID = pathID
 		}
 	}
-	if smallestPathID != pathID{
+	if smallestPathID != p.ackPathID {
 		p.ackPathID = p.ackPathID
 		p.updateAckPathID = true
 		return true

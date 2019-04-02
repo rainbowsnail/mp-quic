@@ -470,11 +470,11 @@ func (s *session) idleTimeout() time.Duration {
 }
 
 func (s *session) UpdateAllReturnPath(ackPathID protocol.PathID)  {
-	for pathID, rttStats := range {
-		if rttStats.SmoothedRTT() != 0 && p.rttStats.SmoothedRTT() > rttStats.SmoothedRTT() {
-			p.ackPathID = pathID
-			p.updateAckPathID = true
-		}
+	for pathID, p := range s.paths {
+		//if p.rttStats.SmoothedRTT() != 0 && p.rttStats.SmoothedRTT() > rttStats.SmoothedRTT() {
+		p.ackPathID = pathID
+		p.updateAckPathID = true
+		//}
 	}
 }
 
