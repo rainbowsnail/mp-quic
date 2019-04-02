@@ -469,6 +469,15 @@ func (s *session) idleTimeout() time.Duration {
 	return s.connectionParameters.GetIdleConnectionStateLifetime()
 }
 
+func (s *session) UpdateAllReturnPath(ackPathID protocol.PathID)  {
+	for pathID, rttStats := range {
+		if rttStats.SmoothedRTT() != 0 && p.rttStats.SmoothedRTT() > rttStats.SmoothedRTT() {
+			p.ackPathID = pathID
+			p.updateAckPathID = true
+		}
+	}
+}
+
 func (s *session) handlePacketImpl(p *receivedPacket) error {
 	if s.perspective == protocol.PerspectiveClient {
 		diversificationNonce := p.publicHeader.DiversificationNonce
