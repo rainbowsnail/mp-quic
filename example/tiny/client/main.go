@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
+	"flag"
 	"io"
 	"log"
 	"net/http"
@@ -12,6 +13,10 @@ import (
 	"github.com/lucas-clemente/quic-go/internal/utils"
 )
 
+var (
+	url = flag.String("url", "", "url")
+)
+
 func testRequest() {
 	client := &http.Client{
 		Transport: &h2quic.RoundTripper{
@@ -19,7 +24,7 @@ func testRequest() {
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
 	}
-	resp, err := client.Get("https://127.0.0.1:6121")
+	resp, err := client.Get(*url)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -35,6 +40,7 @@ func testRequest() {
 }
 
 func main() {
+	flag.Parse()
 	utils.SetLogLevel(utils.LogLevelInfo)
 	testRequest()
 }
