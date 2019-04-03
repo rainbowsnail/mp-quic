@@ -322,7 +322,16 @@ func (sch *scheduler) ackRemainingPaths(s *session, totalWindowUpdateFrames []*w
 		windowUpdateFrames = s.getWindowUpdateFrames(s.peerBlocked)
 	}
 	for _, pthTmp := range s.paths {
-		ackTmp := pthTmp.GetAckFrame()
+		//ackTmp := pthTmp.GetAckFrame()
+		for _, tmpPath := range s.paths{
+			ackTmp = tmpPath.GetAckFrameOnPath(pthTmp.pathID)
+			// TODO-Jing: ack packets on other path and dup ack 
+			if ackTmp != nil {
+				utils.Infof("Ack send on %x", pthTmp)
+				s.packer.QueueControlFrame(ack, pthTmp)
+			}
+		}
+		
 		for _, wuf := range windowUpdateFrames {
 			s.packer.QueueControlFrame(wuf, pthTmp)
 		}
