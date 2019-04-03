@@ -1,7 +1,6 @@
 package quic
 
 import (
-	"github.com/lucas-clemente/quic-go/scheduling"
 	"net"
 	"time"
 
@@ -167,102 +166,94 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 	frame := &wire.StreamFrame{DataLenPresent: true}
 	var currentLen protocol.ByteCount
 
-	fn := func(handler scheduling.ScheduleHandler) (bool, error) {
-		sid, limit := handler.GetPathScheduling(pth.pathID)
+	handler := pth.sess.scheduler.handler
+	streams := handler.GetStreamQueue()
+
+	// Tiny: iterate streams until we fill the packet or we run out of streams
+	for _, sid := range streams {
 		s := f.streamsMap.streams[sid]
 
-		if limit == 0 {
-			return false, nil
-		}
+		// Tiny: it cannot be this case
+		// if s == nil || s.streamID == 1 /* crypto stream is handled separately */ {
+		// 	continue
+		// }
 
-		utils.Infof("schedule path %v stream %v bytes %v", pth.pathID, sid, limit)
+		// Tiny: repeatedly fill the packet with current stream until full or stream not available
+		for {
+			frame.StreamID = s.streamID
+			// not perfect, but thread-safe since writeOffset is only written when getting data
+			frame.Offset = s.writeOffset
+			frameHeaderBytes, _ := frame.MinLength(protocol.VersionWhatever) // can never error
+			if currentLen+frameHeaderBytes > maxBytes {
+				return // theoretically, we could find another stream that fits, but this is quite unlikely, so we stop here
+			}
+			maxLen := maxBytes - currentLen - frameHeaderBytes
 
-		if s == nil || s.streamID == 1 /* crypto stream is handled separately */ {
-			return true, nil
-		}
+			var sendWindowSize protocol.ByteCount
+			lenStreamData := s.lenOfDataForWriting()
+			if lenStreamData != 0 {
+				sendWindowSize, _ = f.flowControlManager.SendWindowSize(s.streamID)
+				maxLen = utils.MinByteCount(maxLen, sendWindowSize)
 
-		frame.StreamID = s.streamID
-		// not perfect, but thread-safe since writeOffset is only written when getting data
-		frame.Offset = s.writeOffset
-		frameHeaderBytes, _ := frame.MinLength(protocol.VersionWhatever) // can never error
-		if currentLen+frameHeaderBytes > maxBytes {
-			return false, nil // theoretically, we could find another stream that fits, but this is quite unlikely, so we stop here
-		}
-		maxLen := maxBytes - currentLen - frameHeaderBytes
-
-		var sendWindowSize protocol.ByteCount
-		lenStreamData := s.lenOfDataForWriting()
-		if lenStreamData != 0 {
-			sendWindowSize, _ = f.flowControlManager.SendWindowSize(s.streamID)
-
-			// Tiny: its not good to just block if the first stream is FC blocked
-			if sendWindowSize == 0 {
-				return false, nil
+				// Tiny: apply path limit
+				pathLimit := handler.GetPathStreamLimit(pth.pathID, sid)
+				maxLen = utils.MinByteCount(maxLen, pathLimit)
 			}
 
-			maxLen = utils.MinByteCount(maxLen, sendWindowSize)
+			// Tiny: either FC blocks, or we run out of path limit
+			if maxLen == 0 {
+				break
+			}
 
-			// Tiny: FIXME currently the first packet will fail, maybe a race condition
-			// pathBytes := pth.sess.scheduler.handler.
-			maxLen = utils.MinByteCount(maxLen, limit)
-			// utils.Infof("%v", pathBytes)
+			var data []byte
+			if lenStreamData != 0 {
+				// Only getDataForWriting() if we didn't have data earlier, so that we
+				// don't send without FC approval (if a Write() raced).
+				data = s.getDataForWriting(maxLen)
+			}
+
+			// This is unlikely, but check it nonetheless, the scheduler might have jumped in. Seems to happen in ~20% of cases in the tests.
+			// Tiny: we have nothing to send & not sending FIN
+			shouldSendFin := s.shouldSendFin()
+			if data == nil && !shouldSendFin {
+				break
+			}
+
+			if shouldSendFin {
+				frame.FinBit = true
+				s.sentFin()
+			}
+
+			frame.Data = data
+			dataLen := frame.DataLen()
+			// Tiny: its from original quic-go
+			f.flowControlManager.AddBytesSent(s.streamID, dataLen)
+			utils.Infof("path %v consume %v bytes on stream %v", pth.pathID, dataLen, sid)
+			// Tiny: although it works even if dataLen == 0, we still checks
+			if dataLen > 0 {
+				handler.ConsumePathBytes(pth.pathID, sid, dataLen)
+			}
+
+			// Tiny: it must breaks the loop next time when FC blocks
+			// Finally, check if we are now FC blocked and should queue a BLOCKED frame
+			if f.flowControlManager.RemainingConnectionWindowSize() == 0 {
+				// We are now connection-level FC blocked
+				f.blockedFrameQueue = append(f.blockedFrameQueue, &wire.BlockedFrame{StreamID: 0})
+			} else if !frame.FinBit && sendWindowSize-dataLen == 0 {
+				// We are now stream-level FC blocked
+				f.blockedFrameQueue = append(f.blockedFrameQueue, &wire.BlockedFrame{StreamID: s.StreamID()})
+			}
+
+			res = append(res, frame)
+			currentLen += frameHeaderBytes + dataLen
+
+			if currentLen == maxBytes {
+				return
+			}
+
+			frame = &wire.StreamFrame{DataLenPresent: true}
 		}
-
-		if maxLen == 0 {
-			return true, nil
-		}
-
-		var data []byte
-		if lenStreamData != 0 {
-			// Only getDataForWriting() if we didn't have data earlier, so that we
-			// don't send without FC approval (if a Write() raced).
-			data = s.getDataForWriting(maxLen)
-		}
-
-		// This is unlikely, but check it nonetheless, the scheduler might have jumped in. Seems to happen in ~20% of cases in the tests.
-		shouldSendFin := s.shouldSendFin()
-		if data == nil && !shouldSendFin {
-			return true, nil
-		}
-
-		if shouldSendFin {
-			frame.FinBit = true
-			s.sentFin()
-		}
-
-		frame.Data = data
-		dataLen := protocol.ByteCount(len(data))
-		utils.Infof("path %v consume %v bytes on stream %v", pth.pathID, dataLen, sid)
-		f.flowControlManager.AddBytesSent(s.streamID, dataLen)
-		handler.ConsumePathBytes(pth.pathID, sid, dataLen)
-
-		// Finally, check if we are now FC blocked and should queue a BLOCKED frame
-		if f.flowControlManager.RemainingConnectionWindowSize() == 0 {
-			// We are now connection-level FC blocked
-			f.blockedFrameQueue = append(f.blockedFrameQueue, &wire.BlockedFrame{StreamID: 0})
-		} else if !frame.FinBit && sendWindowSize-frame.DataLen() == 0 {
-			// We are now stream-level FC blocked
-			f.blockedFrameQueue = append(f.blockedFrameQueue, &wire.BlockedFrame{StreamID: s.StreamID()})
-		}
-
-		res = append(res, frame)
-		currentLen += frameHeaderBytes + frame.DataLen()
-
-		if currentLen == maxBytes {
-			return false, nil
-		}
-
-		frame = &wire.StreamFrame{DataLenPresent: true}
-		return true, nil
 	}
-
-	handler, cont := pth.sess.scheduler.handler, true
-	for cont {
-		cont, _ = fn(handler)
-	}
-
-	// f.streamsMap.RoundRobinIterate(fn)
-
 	return
 }
 

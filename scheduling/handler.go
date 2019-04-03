@@ -7,13 +7,15 @@ import (
 // ScheduleHandler deal with scheduling
 type ScheduleHandler interface {
 	// called when a new stream write bytes
-	AddStreamByte(streamID protocol.StreamID, bytes protocol.ByteCount)
+	AddStreamByte(protocol.StreamID, protocol.ByteCount)
 	// called to cancel a stream write
-	DelStreamByte(streamID protocol.StreamID)
-	// called to get what to send on the path
-	GetPathScheduling(pathID protocol.PathID) (protocol.StreamID, protocol.ByteCount)
+	DelStreamByte(protocol.StreamID)
+	// returns the stream queue
+	GetStreamQueue() []protocol.StreamID
+	// returns stream limit of path
+	GetPathStreamLimit(protocol.PathID, protocol.StreamID) protocol.ByteCount
 	// called to consume bytes
-	ConsumePathBytes(pathID protocol.PathID, streamID protocol.StreamID, bytes protocol.ByteCount)
+	ConsumePathBytes(protocol.PathID, protocol.StreamID, protocol.ByteCount)
 	// called when path availability changed
-	RefreshPath(paths []protocol.PathID)
+	RefreshPath([]protocol.PathID)
 }

@@ -109,18 +109,26 @@ func (e *epicScheduling) DelStreamByte(streamID protocol.StreamID) {
 	}
 }
 
-func (e *epicScheduling) GetPathScheduling(pathID protocol.PathID) (protocol.StreamID, protocol.ByteCount) {
+// Tiny: we must copy for thread safety
+func (e *epicScheduling) GetStreamQueue() []protocol.StreamID {
 	e.RLock()
 	defer e.RUnlock()
-	for _, sid := range e.streamQueue {
-		if s, ok := e.streams[sid]; ok {
-			if b, ok := s.alloc[pathID]; ok && s.bytes > 0 && b > 0 {
-				return sid, b
-			}
+	ret := make([]protocol.StreamID, len(e.streamQueue))
+	copy(ret, e.streamQueue)
+	return ret
+}
+
+func (e *epicScheduling) GetPathStreamLimit(pid protocol.PathID, sid protocol.StreamID) protocol.ByteCount {
+	e.RLock()
+	defer e.RUnlock()
+	if s, ok := e.streams[sid]; ok {
+		if s.bytes > 0 {
+			return s.alloc[pid]
 		}
+	} else {
+		utils.Errorf("try get path %v limit on non-existing stream %v, ignore", pid, sid)
 	}
-	utils.Infof("no stream to schedule on path %v", pathID)
-	return 0, 0
+	return 0
 }
 
 // Tiny: we dont rearrange every time
