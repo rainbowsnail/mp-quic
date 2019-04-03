@@ -331,6 +331,13 @@ func (sch *scheduler) ackRemainingPaths(s *session, totalWindowUpdateFrames []*w
 				s.packer.QueueControlFrame(ack, pthTmp)
 			}
 		}
+		if shouldSendDupAckOnPath, ok := sch.shouldSendDupAck[pthTmp.pathID]; ok {
+			if shouldSendDupAckOnPath {
+				utils.Infof("DupAck send on %x", pthTmp.pathID)
+				s.packer.QueueControlFrame(sch.dupAckFrame, pthTmp)
+				sch.shouldSendDupAck[pthTmp.pathID] = false
+			}
+		}
 		
 		for _, wuf := range windowUpdateFrames {
 			s.packer.QueueControlFrame(wuf, pthTmp)
