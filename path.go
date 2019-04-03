@@ -48,9 +48,6 @@ type path struct {
 	lastNetworkActivityTime time.Time
 
 	timer *utils.Timer
-
-	// Tiny: I don't know if these fields should appear here or in the scheduler
-	allocStream map[protocol.StreamID]protocol.ByteCount
 }
 
 // setup initializes values that are independent of the perspective
@@ -80,8 +77,6 @@ func (p *path) setup(oliaSenders map[protocol.PathID]*congestion.OliaSender) {
 	p.timer = utils.NewTimer()
 	p.lastNetworkActivityTime = now
 
-	p.allocStream = make(map[protocol.StreamID]protocol.ByteCount)
-
 	p.open.Set(true)
 	p.potentiallyFailed.Set(false)
 
@@ -91,6 +86,9 @@ func (p *path) setup(oliaSenders map[protocol.PathID]*congestion.OliaSender) {
 
 func (p *path) close() error {
 	p.open.Set(false)
+
+	// Tiny: notify path change
+	p.sess.onPathChange()
 	return nil
 }
 
@@ -195,6 +193,8 @@ func (p *path) handlePacketImpl(pkt *receivedPacket) error {
 
 	// We just received a new packet on that path, so it works
 	p.potentiallyFailed.Set(false)
+	// Tiny: notify path change
+	p.sess.onPathChange()
 
 	// Calculate packet number
 	hdr.PacketNumber = protocol.InferPacketNumber(
@@ -245,6 +245,8 @@ func (p *path) onRTO(lastSentTime time.Time) bool {
 	// Was there any activity since last sent packet?
 	if p.lastNetworkActivityTime.Before(lastSentTime) {
 		p.potentiallyFailed.Set(true)
+		// Tiny: notify path change
+		p.sess.onPathChange()
 		p.sess.schedulePathsFrame()
 		return true
 	}
@@ -253,41 +255,4 @@ func (p *path) onRTO(lastSentTime time.Time) bool {
 
 func (p *path) SetLeastUnacked(leastUnacked protocol.PacketNumber) {
 	p.leastUnacked = leastUnacked
-}
-
-func (p *path) AllocateStream(streamID protocol.StreamID, bytes protocol.ByteCount) {
-	if bytes <= 0 {
-		return
-	}
-	if b, ok := p.allocStream[streamID]; ok && b > 0 {
-		utils.Errorf("duplicate allocate stream %v, ignore", streamID)
-	} else {
-		p.allocStream[streamID] = bytes
-	}
-}
-
-func (p *path) GetStreamBytes(streamID protocol.StreamID) protocol.ByteCount {
-	if b, ok := p.allocStream[streamID]; ok {
-		utils.Infof("path %v stream %v bytes %v", p.pathID, streamID, b)
-		return b
-	}
-	utils.Errorf("try get stream %v not allocated", streamID)
-	return protocol.MaxByteCount
-}
-
-func (p *path) RemoveStreamBytes(streamID protocol.StreamID, bytes protocol.ByteCount) {
-	if bytes <= 0 {
-		return
-	}
-	if b, ok := p.allocStream[streamID]; ok {
-		if b <= bytes {
-			if b < bytes {
-				utils.Errorf("try remove stream %v more bytes than allocated", streamID)
-			}
-			delete(p.allocStream, streamID)
-		}
-		p.allocStream[streamID] = b - bytes
-	} else {
-		utils.Errorf("try remove stream %v not allocated %v", streamID, bytes)
-	}
 }

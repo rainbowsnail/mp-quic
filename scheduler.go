@@ -1,6 +1,7 @@
 package quic
 
 import (
+	"github.com/lucas-clemente/quic-go/scheduling"
 	"time"
 
 	"github.com/lucas-clemente/quic-go/ackhandler"
@@ -12,10 +13,13 @@ import (
 type scheduler struct {
 	// XXX Currently round-robin based, inspired from MPTCP scheduler
 	quotas map[protocol.PathID]uint
+
+	handler scheduling.ScheduleHandler
 }
 
 func (sch *scheduler) setup() {
 	sch.quotas = make(map[protocol.PathID]uint)
+	sch.handler = scheduling.NewEpicScheduling()
 }
 
 func (sch *scheduler) getRetransmission(s *session) (hasRetransmission bool, retransmitPacket *ackhandler.Packet, pth *path) {
@@ -108,6 +112,12 @@ pathLoop:
 			continue pathLoop
 		}
 
+		// Tiny: if the path cannot send any more frame, ignore
+		// _, limit := sch.handler.GetPathScheduling(pathID)
+		// if limit == 0 {
+		// 	continue pathLoop
+		// }
+
 		currentQuota, ok = sch.quotas[pathID]
 		if !ok {
 			sch.quotas[pathID] = 0
@@ -170,6 +180,12 @@ pathLoop:
 			continue pathLoop
 		}
 
+		// Tiny: if the path cannot send any more frame, ignore
+		_, limit := sch.handler.GetPathScheduling(pathID)
+		if limit == 0 {
+			continue pathLoop
+		}
+
 		currentRTT = pth.rttStats.SmoothedRTT()
 
 		// Prefer staying single-path if not blocked by current path
@@ -208,8 +224,8 @@ pathLoop:
 func (sch *scheduler) selectPath(s *session, hasRetransmission bool, hasStreamRetransmission bool, fromPth *path) *path {
 	// XXX Currently round-robin
 	// TODO select the right scheduler dynamically
-	return sch.selectPathLowLatency(s, hasRetransmission, hasStreamRetransmission, fromPth)
-	// return sch.selectPathRoundRobin(s, hasRetransmission, hasStreamRetransmission, fromPth)
+	// return sch.selectPathLowLatency(s, hasRetransmission, hasStreamRetransmission, fromPth)
+	return sch.selectPathRoundRobin(s, hasRetransmission, hasStreamRetransmission, fromPth)
 }
 
 // Lock of s.paths must be free (in case of log print)
@@ -313,25 +329,14 @@ func (sch *scheduler) ackRemainingPaths(s *session, totalWindowUpdateFrames []*w
 	return nil
 }
 
+// Tiny: called when stream issue a write
 func (sch *scheduler) allocateStream(s *session, str *stream) {
 	bytes := str.lenOfDataForWriting()
 	if bytes <= 0 {
 		return
 	}
-	s.pathsLock.RLock()
-	// TODO
-	cnt := len(s.paths)
-	avg := bytes / protocol.ByteCount(cnt)
-	for _, pth := range s.paths {
-		cnt--
-		if cnt > 0 {
-			pth.AllocateStream(str.streamID, avg)
-			bytes -= avg
-		} else {
-			pth.AllocateStream(str.streamID, bytes)
-		}
-	}
-	s.pathsLock.RUnlock()
+	utils.Infof("stream %v write %v bytes", str.streamID, bytes)
+	sch.handler.AddStreamByte(str.streamID, bytes)
 }
 
 func (sch *scheduler) sendPacket(s *session) error {

@@ -540,6 +540,8 @@ func (s *session) handleFrames(fs []wire.Frame, p *path) error {
 				if frame.RemoteRTTs[i] >= 30*time.Minute {
 					// Path is potentially failed
 					s.paths[frame.PathIDs[i]].potentiallyFailed.Set(true)
+					// Tiny: notify path change
+					s.onPathChange()
 				}
 			}
 			s.pathsLock.RUnlock()
@@ -868,7 +870,7 @@ func (s *session) queueResetStreamFrame(id protocol.StreamID, offset protocol.By
 // Tiny: onStreamData first notify scheduler the data on stream for allocation
 //       then scheduleSending as normal
 func (s *session) onStreamData(str *stream) {
-	// Tiny:m ignore crypto stream
+	// Tiny: ignore crypto stream
 	if str.streamID != 1 {
 		s.scheduler.allocateStream(s, str)
 	}
@@ -947,6 +949,34 @@ func (s *session) getWindowUpdateFrames(force bool) []*wire.WindowUpdateFrame {
 		res[i] = &wire.WindowUpdateFrame{StreamID: u.StreamID, ByteOffset: u.Offset}
 	}
 	return res
+}
+
+// Tiny: get all not failed & open paths
+func (s *session) getAlivePaths() []protocol.PathID {
+	// Tiny: we dont use path lock
+	// s.pathsLock.RLock()
+	// defer s.pathsLock.RUnlock()
+
+	if len(s.paths) <= 1 {
+		p := s.paths[protocol.InitialPathID]
+		if p.open.Get() && !p.potentiallyFailed.Get() {
+			return []protocol.PathID{protocol.InitialPathID}
+		}
+		return nil
+	}
+
+	var ret []protocol.PathID
+	for pid, p := range s.paths {
+		if pid != protocol.InitialPathID && p.open.Get() && !p.potentiallyFailed.Get() {
+			ret = append(ret, pid)
+		}
+	}
+	return ret
+}
+
+// Tiny: called when path changes
+func (s *session) onPathChange() {
+	s.scheduler.handler.RefreshPath(s.getAlivePaths())
 }
 
 func (s *session) LocalAddr() net.Addr {

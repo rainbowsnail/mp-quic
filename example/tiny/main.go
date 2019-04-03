@@ -29,7 +29,7 @@ func startServer() {
 
 func main() {
 	flag.Parse()
-	utils.SetLogLevel(utils.LogLevelInfo)
+	utils.SetLogLevel(utils.LogLevelDebug)
 	buf = make([]byte, *size)
 	startServer()
 }

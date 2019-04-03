@@ -1,6 +1,7 @@
 package quic
 
 import (
+	"github.com/lucas-clemente/quic-go/scheduling"
 	"net"
 	"time"
 
@@ -166,7 +167,16 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 	frame := &wire.StreamFrame{DataLenPresent: true}
 	var currentLen protocol.ByteCount
 
-	fn := func(s *stream) (bool, error) {
+	fn := func(handler scheduling.ScheduleHandler) (bool, error) {
+		sid, limit := handler.GetPathScheduling(pth.pathID)
+		s := f.streamsMap.streams[sid]
+
+		if limit == 0 {
+			return false, nil
+		}
+
+		utils.Infof("schedule path %v stream %v bytes %v", pth.pathID, sid, limit)
+
 		if s == nil || s.streamID == 1 /* crypto stream is handled separately */ {
 			return true, nil
 		}
@@ -184,11 +194,17 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 		lenStreamData := s.lenOfDataForWriting()
 		if lenStreamData != 0 {
 			sendWindowSize, _ = f.flowControlManager.SendWindowSize(s.streamID)
+
+			// Tiny: its not good to just block if the first stream is FC blocked
+			if sendWindowSize == 0 {
+				return false, nil
+			}
+
 			maxLen = utils.MinByteCount(maxLen, sendWindowSize)
 
 			// Tiny: FIXME currently the first packet will fail, maybe a race condition
-			pathBytes := pth.GetStreamBytes(s.streamID)
-			maxLen = utils.MinByteCount(maxLen, pathBytes)
+			// pathBytes := pth.sess.scheduler.handler.
+			maxLen = utils.MinByteCount(maxLen, limit)
 			// utils.Infof("%v", pathBytes)
 		}
 
@@ -215,8 +231,10 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 		}
 
 		frame.Data = data
-		f.flowControlManager.AddBytesSent(s.streamID, protocol.ByteCount(len(data)))
-		pth.RemoveStreamBytes(s.streamID, protocol.ByteCount(len(data)))
+		dataLen := protocol.ByteCount(len(data))
+		utils.Infof("path %v consume %v bytes on stream %v", pth.pathID, dataLen, sid)
+		f.flowControlManager.AddBytesSent(s.streamID, dataLen)
+		handler.ConsumePathBytes(pth.pathID, sid, dataLen)
 
 		// Finally, check if we are now FC blocked and should queue a BLOCKED frame
 		if f.flowControlManager.RemainingConnectionWindowSize() == 0 {
@@ -238,7 +256,12 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 		return true, nil
 	}
 
-	f.streamsMap.RoundRobinIterate(fn)
+	handler, cont := pth.sess.scheduler.handler, true
+	for cont {
+		cont, _ = fn(handler)
+	}
+
+	// f.streamsMap.RoundRobinIterate(fn)
 
 	return
 }

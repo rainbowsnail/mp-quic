@@ -61,6 +61,9 @@ func (pm *pathManager) setup(conn connection) {
 	// Setup this first path
 	pm.sess.paths[protocol.InitialPathID].setup(pm.oliaSenders)
 
+	// Tiny: notify path change
+	pm.sess.onPathChange()
+
 	// With the initial path, get the remoteAddr to create paths accordingly
 	if conn.RemoteAddr() != nil {
 		remAddr, err := net.ResolveUDPAddr("udp", conn.RemoteAddr().String())
@@ -191,6 +194,10 @@ func (pm *pathManager) createPaths() error {
 			}
 		}
 	}
+
+	// Tiny: notify path change
+	pm.sess.onPathChange()
+
 	pm.sess.schedulePathsFrame()
 	return nil
 }
@@ -228,6 +235,9 @@ func (pm *pathManager) createPathFromRemote(p *receivedPacket) (*path, error) {
 	if utils.Debug() {
 		utils.Debugf("Created remote path %x on %s to %s", pathID, localPconn.LocalAddr().String(), remoteAddr.String())
 	}
+
+	// Tiny: notify path change
+	pm.sess.onPathChange()
 
 	return pth, nil
 }
