@@ -180,12 +180,6 @@ pathLoop:
 			continue pathLoop
 		}
 
-		// Tiny: if the path cannot send any more frame, ignore
-		_, limit := sch.handler.GetPathScheduling(pathID)
-		if limit == 0 {
-			continue pathLoop
-		}
-
 		currentRTT = pth.rttStats.SmoothedRTT()
 
 		// Prefer staying single-path if not blocked by current path
@@ -227,6 +221,9 @@ func (sch *scheduler) selectPath(s *session, hasRetransmission bool, hasStreamRe
 	// return sch.selectPathLowLatency(s, hasRetransmission, hasStreamRetransmission, fromPth)
 	return sch.selectPathRoundRobin(s, hasRetransmission, hasStreamRetransmission, fromPth)
 }
+
+// Tiny: filter & sort paths
+// func (sch *scheduler) selectPaths(s *session, )
 
 // Lock of s.paths must be free (in case of log print)
 func (sch *scheduler) performPacketSending(s *session, windowUpdateFrames []*wire.WindowUpdateFrame, pth *path) (*ackhandler.Packet, bool, error) {
