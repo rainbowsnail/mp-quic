@@ -142,6 +142,7 @@ func (p* path) UpdateReturnPath() bool {
 	if smallestPathID != p.ackPathID {
 		p.ackPathID = p.ackPathID
 		p.updateAckPathID = true
+		utils.Infof("Path.go: UpdateReturnPath for path %x", p.pathID)
 		return true
 	}
 	p.sess.UpdateAllReturnPath(smallestPathID)

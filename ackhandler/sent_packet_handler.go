@@ -181,6 +181,7 @@ func (h *sentPacketHandler) SentPacket(packet *Packet) error {
 
 func (h *sentPacketHandler) ReceivedAck(ackFrame *wire.AckFrame, withPacketNumber protocol.PacketNumber, rcvTime time.Time, ackPathID protocol.PathID) (error, bool) {
 	returnPathRttUpdated := false
+	utils.Infof("sentPacketHandler: ReceivedAck for path %x", ackPathID)
 	if ackFrame.ReceivedPathID != ackPathID {
 		returnPathRttUpdated = h.maybeUpdateReturnPathRTT(ackFrame.LargestAcked, ackFrame.DelayTime, rcvTime, ackFrame.ReceivedPathID)
 	}
@@ -351,6 +352,7 @@ func (h *sentPacketHandler) maybeUpdateReturnPathRTT(largestAcked protocol.Packe
 	for el := h.packetHistory.Front(); el != nil; el = el.Next() {
 		packet := el.Value
 		if packet.PacketNumber == largestAcked {
+			utils.Infof("updateReturnPathRTT on path %x", rtnPathID)
 			h.rttStatsPaths[rtnPathID].UpdateRTT(rcvTime.Sub(packet.SendTime), ackDelay, time.Now())
 			return true
 		}
