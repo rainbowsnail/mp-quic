@@ -1,14 +1,14 @@
 package main
 
 import (
-	"crypto/md5"
-	"errors"
+//	"crypto/md5"
+//	"errors"
 	"flag"
 	"fmt"
-	"io"
-	"io/ioutil"
+//	"io"
+//	"io/ioutil"
 	"log"
-	"mime/multipart"
+//	"mime/multipart"
 	"net/http"
 	"path"
 	"runtime"

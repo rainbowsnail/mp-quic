@@ -33,20 +33,25 @@ func (sch *scheduler) setup() {
 	now := time.Now()
 	sch.lastDupAckTime = now
 	sch.timer = utils.NewTimer()
+	go sch.run()
 }
 
 func (sch *scheduler) run() {
 	// XXX (QDC): relay everything to the session, maybe not the most efficient
 //runLoop:
+
+	sch.maybeResetTimer()
 	for {
-		sch.maybeResetTimer()
 
 		select {
 		case <-sch.timer.Chan():
 			sch.timer.SetRead()
 			sch.shouldInstigateDupAck.Set(true)
-			sch.maybeResetTimer()
 			utils.Infof("scheduler timer timeout")
+
+			now := time.Now()
+			sch.lastDupAckTime = now
+			sch.maybeResetTimer()
 		}
 	}
 }
