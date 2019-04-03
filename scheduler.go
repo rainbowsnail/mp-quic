@@ -46,6 +46,7 @@ func (sch *scheduler) run() {
 			sch.timer.SetRead()
 			sch.shouldInstigateDupAck.Set(true)
 			sch.maybeResetTimer()
+			utils.Infof("scheduler timer timeout")
 		}
 	}
 }
@@ -411,6 +412,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 				
 				for pathID, p := range s.paths{
 					if p != pth {
+						utils.Infof("shouldSendDupAck on Path %x", pathID)
 						sch.shouldSendDupAck[pathID] = true
 					}
 				}
