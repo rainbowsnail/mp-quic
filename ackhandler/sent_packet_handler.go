@@ -356,6 +356,10 @@ func (h *sentPacketHandler) maybeUpdateReturnPathRTT(largestAcked protocol.Packe
 		//utils.Infof("PacketNumber = %x", packet.PacketNumber)
 		if packet.PacketNumber == largestAcked {
 			utils.Infof("updateReturnPathRTT on path %x", rtnPathID)
+			if _, ok = h.rttStatsPaths[rtnPathID]; !ok{
+				rttStats = &congestion.RTTStats{}
+				h.rttStatsPaths[rtnPathID] = rttStats
+			}
 			h.rttStatsPaths[rtnPathID].UpdateRTT(rcvTime.Sub(packet.SendTime), ackDelay, time.Now())
 			return true
 		}
