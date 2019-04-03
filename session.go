@@ -470,11 +470,12 @@ func (s *session) idleTimeout() time.Duration {
 }
 
 func (s *session) UpdateAllReturnPath(ackPathID protocol.PathID)  {
-	for pathID, p := range s.paths {
+	for _, p := range s.paths {
 		//if p.rttStats.SmoothedRTT() != 0 && p.rttStats.SmoothedRTT() > rttStats.SmoothedRTT() {
-		p.ackPathID = pathID
-		p.updateAckPathID = true
-		//}
+		if(p.ackPathID != ackPathID){
+			p.ackPathID = ackPathID
+			p.updateAckPathID = true
+		}
 	}
 }
 
@@ -650,6 +651,7 @@ func (s *session) handleRstStreamFrame(frame *wire.RstStreamFrame) error {
 
 func (s *session) handleAckFrame(frame *wire.AckFrame) error {
 	pth := s.paths[frame.PathID]
+	utils.Infof("session handle Ack for path %x", frame.PathID)
 	err, returnPathRttUpdated := pth.sentPacketHandler.ReceivedAck(frame, pth.lastRcvdPacketNumber, pth.lastNetworkActivityTime, pth.ackPathID)
 	if err == nil && returnPathRttUpdated{
 		// Choose new ack return path

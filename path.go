@@ -143,10 +143,11 @@ func (p* path) UpdateReturnPath() bool {
 		p.ackPathID = p.ackPathID
 		p.updateAckPathID = true
 		utils.Infof("Path.go: UpdateReturnPath for path %x", p.pathID)
-		return true
+		//return true
 	}
 	p.sess.UpdateAllReturnPath(smallestPathID)
-	return false
+	return true
+	//return false
 }
 
 func (p *path) SendingAllowed() bool {

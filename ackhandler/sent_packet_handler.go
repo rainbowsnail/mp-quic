@@ -181,7 +181,7 @@ func (h *sentPacketHandler) SentPacket(packet *Packet) error {
 
 func (h *sentPacketHandler) ReceivedAck(ackFrame *wire.AckFrame, withPacketNumber protocol.PacketNumber, rcvTime time.Time, ackPathID protocol.PathID) (error, bool) {
 	returnPathRttUpdated := false
-	utils.Infof("sentPacketHandler: ReceivedAck for path %x", ackPathID)
+	utils.Infof("sentPacketHandler: ReceivedAck on path %x for path %x", ackFrame.ReceivedPathID, ackFrame.PathID)
 	if ackFrame.ReceivedPathID != ackPathID {
 		returnPathRttUpdated = h.maybeUpdateReturnPathRTT(ackFrame.LargestAcked, ackFrame.DelayTime, rcvTime, ackFrame.ReceivedPathID)
 	}
@@ -349,15 +349,18 @@ func (h *sentPacketHandler) determineNewlyAckedPacketsClosePath(f *wire.ClosePat
 
 func (h *sentPacketHandler) maybeUpdateReturnPathRTT(largestAcked protocol.PacketNumber, ackDelay time.Duration, rcvTime time.Time, rtnPathID protocol.PathID) bool {
 	//TODO:check whether this RTT is too old and discard is
+	utils.Infof("maybeUpdateReturnPathRTT")
+	utils.Infof("largestAcked = %x", largestAcked)
 	for el := h.packetHistory.Front(); el != nil; el = el.Next() {
 		packet := el.Value
+		//utils.Infof("PacketNumber = %x", packet.PacketNumber)
 		if packet.PacketNumber == largestAcked {
 			utils.Infof("updateReturnPathRTT on path %x", rtnPathID)
 			h.rttStatsPaths[rtnPathID].UpdateRTT(rcvTime.Sub(packet.SendTime), ackDelay, time.Now())
 			return true
 		}
 	}
-	return false
+	return true
 }
 
 func (h *sentPacketHandler) maybeUpdateRTT(largestAcked protocol.PacketNumber, ackDelay time.Duration, rcvTime time.Time) bool {

@@ -322,39 +322,47 @@ func (sch *scheduler) ackRemainingPaths(s *session, totalWindowUpdateFrames []*w
 		windowUpdateFrames = s.getWindowUpdateFrames(s.peerBlocked)
 	}
 	for _, pthTmp := range s.paths {
+		hasAck := false
 		//ackTmp := pthTmp.GetAckFrame()
 		for _, tmpPath := range s.paths{
-			ackTmp = tmpPath.GetAckFrameOnPath(pthTmp.pathID)
+			ackTmp := tmpPath.GetAckFrameOnPath(pthTmp.pathID)
 			// TODO-Jing: ack packets on other path and dup ack 
 			if ackTmp != nil {
+				hasAck = true
 				utils.Infof("Ack send on %x", pthTmp)
-				s.packer.QueueControlFrame(ack, pthTmp)
+				s.packer.QueueControlFrame(ackTmp, pthTmp)
 			}
 		}
 		if shouldSendDupAckOnPath, ok := sch.shouldSendDupAck[pthTmp.pathID]; ok {
-			if shouldSendDupAckOnPath {
-				utils.Infof("DupAck send on %x", pthTmp.pathID)
-				s.packer.QueueControlFrame(sch.dupAckFrame, pthTmp)
-				sch.shouldSendDupAck[pthTmp.pathID] = false
+			if pthTmp.pathID != protocol.InitialPathID {
+				if shouldSendDupAckOnPath {
+					hasAck = true
+					utils.Infof("DupAck send on %x", pthTmp.pathID)
+					if sch.dupAckFrame == nil {
+						utils.Infof("DupAck is gone!!!!")
+					}
+					s.packer.QueueControlFrame(sch.dupAckFrame, pthTmp)
+					sch.shouldSendDupAck[pthTmp.pathID] = false
+				}
 			}
 		}
 		
 		for _, wuf := range windowUpdateFrames {
 			s.packer.QueueControlFrame(wuf, pthTmp)
 		}
-		if ackTmp != nil || len(windowUpdateFrames) > 0 {
-			if pthTmp.pathID == protocol.InitialPathID && ackTmp == nil {
+		if hasAck || len(windowUpdateFrames) > 0 {
+			if pthTmp.pathID == protocol.InitialPathID && hasAck == false {
 				continue
 			}
 			swf := pthTmp.GetStopWaitingFrame(false)
 			if swf != nil {
 				s.packer.QueueControlFrame(swf, pthTmp)
 			}
-			s.packer.QueueControlFrame(ackTmp, pthTmp)
+			//s.packer.QueueControlFrame(ackTmp, pthTmp)
 			// XXX (QDC) should we instead call PackPacket to provides WUFs?
 			var packet *packedPacket
 			var err error
-			if ackTmp != nil {
+			if hasAck {
 				// Avoid internal error bug
 				packet, err = s.packer.PackAckPacket(pthTmp)
 			} else {
@@ -430,6 +438,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 			// TODO-Jing: ack packets on other path and dup ack 
 			if ack != nil && sch.shouldInstigateDupAck.Get() {
 				sch.shouldInstigateDupAck.Set(false)
+				sch.dupAckFrame = ack
 				
 				for pathID, p := range s.paths{
 					if p != pth {
@@ -451,10 +460,12 @@ func (sch *scheduler) sendPacket(s *session) error {
 		}
 		
 		if shouldSendDupAckOnPath, ok := sch.shouldSendDupAck[pth.pathID]; ok {
-			if shouldSendDupAckOnPath {
-				utils.Infof("DupAck send on %x", pth.pathID)
-				s.packer.QueueControlFrame(sch.dupAckFrame, pth)
-				sch.shouldSendDupAck[pth.pathID] = false
+			if pth.pathID != protocol.InitialPathID {
+				if shouldSendDupAckOnPath {
+					utils.Infof("DupAck send on %x", pth.pathID)
+					s.packer.QueueControlFrame(sch.dupAckFrame, pth)
+					sch.shouldSendDupAck[pth.pathID] = false
+				}
 			}
 		}
 		
