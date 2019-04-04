@@ -470,12 +470,13 @@ func (s *session) idleTimeout() time.Duration {
 }
 
 func (s *session) UpdateAllReturnPath(ackPathID protocol.PathID)  {
-	for _, p := range s.paths {
-		//if p.rttStats.SmoothedRTT() != 0 && p.rttStats.SmoothedRTT() > rttStats.SmoothedRTT() {
-		if(p.ackPathID != ackPathID){
-			utils.Infof("session change path %x ackPathID %x to %x", p.pathID, p.ackPathID, ackPathID)
-			p.ackPathID = ackPathID
-			p.updateAckPathID = true
+	if s.perspective == protocol.PerspectiveServer {
+		for _, p := range s.paths {
+			//if p.rttStats.SmoothedRTT() != 0 && p.rttStats.SmoothedRTT() > rttStats.SmoothedRTT() {
+			if(p.ackPathID != ackPathID){
+				p.ackPathID = ackPathID
+				p.updateAckPathID = true
+			}
 		}
 	}
 }
@@ -617,10 +618,10 @@ func (s *session) handleStreamFrame(frame *wire.StreamFrame) error {
 
 func (s *session) handleAckReturnPathFrame(frame *wire.ChangeAckPathFrame) error {
 	// TODO: check time and other error
-	utils.Infof("handleAckReturnPathFrame")
-	for pathID, ackRtnPath := range frame.AckReturnPaths{
-		utils.Infof("change path %x 's ackpath %x to %x", pathID, s.paths[pathID].ackPathID, ackRtnPath)
-		s.paths[pathID].ackPathID = ackRtnPath
+	if s.perspective == protocol.PerspectiveClient {
+		for pathID, ackRtnPath := range frame.AckReturnPaths{
+			s.paths[pathID].ackPathID = ackRtnPath
+		}
 	}
 	return nil
 }
@@ -655,14 +656,16 @@ func (s *session) handleRstStreamFrame(frame *wire.RstStreamFrame) error {
 func (s *session) handleAckFrame(frame *wire.AckFrame) error {
 	pth := s.paths[frame.PathID]
 	utils.Infof("session handle Ack for path %x", frame.PathID)
-	err, returnPathRttUpdated := pth.sentPacketHandler.ReceivedAck(frame, pth.lastRcvdPacketNumber, pth.lastNetworkActivityTime, pth.ackPathID)
-	if err == nil && returnPathRttUpdated{
-		// Choose new ack return path
-		returnPathUpdated := pth.UpdateReturnPath()
-		if returnPathUpdated == true {
-			s.streamFramer.AddAckReturnPathsFrame(s)
+	if s.perspective == protocol.PerspectiveServer {
+		err, returnPathRttUpdated := pth.sentPacketHandler.ReceivedAck(frame, pth.lastRcvdPacketNumber, pth.lastNetworkActivityTime, pth.ackPathID)
+		if err == nil && returnPathRttUpdated{
+			// Choose new ack return path
+			returnPathUpdated := pth.UpdateReturnPath()
+			if returnPathUpdated == true {
+				s.streamFramer.AddAckReturnPathsFrame(s)
+			}
 		}
-	}
+	}	
 	if err == nil && pth.rttStats.SmoothedRTT() > s.rttStats.SmoothedRTT() {
 		// Update the session RTT, which comes to take the max RTT on all paths
 		s.rttStats.UpdateSessionRTT(pth.rttStats.SmoothedRTT())
