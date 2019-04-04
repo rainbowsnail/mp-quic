@@ -431,7 +431,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 
 		// XXX Some automatic ACK generation should be done someway
 		var ack *wire.AckFrame
-
+		hasAck := false
 		//ack = pth.GetAckFrame()
 		for _, tmpPath := range s.paths{
 			ack = tmpPath.GetAckFrameOnPath(pth.pathID)
@@ -453,25 +453,28 @@ func (sch *scheduler) sendPacket(s *session) error {
 			if ack != nil {
 				utils.Infof("Ack send on %x", pth.pathID)
 				s.packer.QueueControlFrame(ack, pth)
+				hasAck = true
 			}
-			if ack != nil || hasStreamRetransmission {
-				swf := pth.sentPacketHandler.GetStopWaitingFrame(hasStreamRetransmission)
-				if swf != nil {
-					s.packer.QueueControlFrame(swf, pth)
+			
+		}
+		if s.perspective == protocol.PerspectiveClient {
+			if shouldSendDupAckOnPath, ok := sch.shouldSendDupAck[pth.pathID]; ok {
+				if pth.pathID != protocol.InitialPathID {
+					if shouldSendDupAckOnPath {
+						utils.Infof("DupAck send on %x", pth.pathID)
+						s.packer.QueueControlFrame(sch.dupAckFrame, pth)
+						hasAck = true
+						sch.shouldSendDupAck[pth.pathID] = false
+					}
 				}
 			}
 		}
-		
-		if shouldSendDupAckOnPath, ok := sch.shouldSendDupAck[pth.pathID]; ok {
-			if pth.pathID != protocol.InitialPathID {
-				if shouldSendDupAckOnPath {
-					utils.Infof("DupAck send on %x", pth.pathID)
-					s.packer.QueueControlFrame(sch.dupAckFrame, pth)
-					sch.shouldSendDupAck[pth.pathID] = false
-				}
+		if ack != nil || hasStreamRetransmission {
+			swf := pth.sentPacketHandler.GetStopWaitingFrame(hasStreamRetransmission)
+			if swf != nil {
+				s.packer.QueueControlFrame(swf, pth)
 			}
 		}
-		
 		// Also add ACK RETURN PATHS frames, if any
 		if s.perspective == protocol.PerspectiveServer {
 			for arpf := s.streamFramer.PopAckReturnPathsFrame(s); arpf != nil; arpf = s.streamFramer.PopAckReturnPathsFrame(s) {
