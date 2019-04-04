@@ -16,9 +16,9 @@ type scheduler struct {
 	handler ScheduleHandler
 }
 
-func (sch *scheduler) setup() {
+func (sch *scheduler) setup(s *session) {
 	sch.quotas = make(map[protocol.PathID]uint)
-	sch.handler = NewEpicScheduling()
+	sch.handler = NewEpicScheduling(s)
 }
 
 func (sch *scheduler) getRetransmission(s *session) (hasRetransmission bool, retransmitPacket *ackhandler.Packet, pth *path) {
@@ -74,9 +74,10 @@ func (sch *scheduler) getRetransmission(s *session) (hasRetransmission bool, ret
 }
 
 func (sch *scheduler) selectPathRoundRobin(s *session, hasRetransmission bool, hasStreamRetransmission bool, fromPth *path) *path {
-	if sch.quotas == nil {
-		sch.setup()
-	}
+	// Tiny: these code has no use
+	// if sch.quotas == nil {
+	// 	sch.setup()
+	// }
 
 	// XXX Avoid using PathID 0 if there is more than 1 path
 	if len(s.paths) <= 1 {

@@ -31,14 +31,16 @@ type streamInfo struct {
 type epicScheduling struct {
 	sync.RWMutex
 
+	sess *session
+
 	paths       []protocol.PathID
 	streams     map[protocol.StreamID]*streamInfo
 	streamQueue []protocol.StreamID
 }
 
 // NewEpicScheduling creates an epic scheduling handler
-func NewEpicScheduling() ScheduleHandler {
-	e := &epicScheduling{}
+func NewEpicScheduling(sess *session) ScheduleHandler {
+	e := &epicScheduling{sess: sess}
 	e.setup()
 	return e
 }
