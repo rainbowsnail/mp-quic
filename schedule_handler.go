@@ -1,4 +1,4 @@
-package scheduling
+package quic
 
 import (
 	"github.com/lucas-clemente/quic-go/internal/protocol"
@@ -6,6 +6,22 @@ import (
 	"sort"
 	"sync"
 )
+
+// ScheduleHandler deal with scheduling
+type ScheduleHandler interface {
+	// called when a new stream write bytes
+	AddStreamByte(protocol.StreamID, protocol.ByteCount)
+	// called to cancel a stream write
+	DelStreamByte(protocol.StreamID)
+	// returns the stream queue
+	GetStreamQueue() []protocol.StreamID
+	// returns stream limit of path
+	GetPathStreamLimit(protocol.PathID, protocol.StreamID) protocol.ByteCount
+	// called to consume bytes
+	ConsumePathBytes(protocol.PathID, protocol.StreamID, protocol.ByteCount)
+	// called when path availability changed
+	RefreshPath([]protocol.PathID)
+}
 
 type streamInfo struct {
 	bytes protocol.ByteCount
@@ -131,14 +147,15 @@ func (e *epicScheduling) GetPathStreamLimit(pid protocol.PathID, sid protocol.St
 	return 0
 }
 
-// Tiny: we dont rearrange every time
+// Tiny: we rearrange every time, i dont know if this will work
 func (e *epicScheduling) ConsumePathBytes(pathID protocol.PathID, streamID protocol.StreamID, bytes protocol.ByteCount) {
 	e.Lock()
 	defer e.Unlock()
 	if s, ok := e.streams[streamID]; ok {
 		if b, ok := s.alloc[pathID]; ok && s.bytes >= bytes && b >= bytes {
 			s.bytes -= bytes
-			s.alloc[pathID] -= bytes
+			// s.alloc[pathID] -= bytes
+			e.rearrangeStreams()
 			return
 		}
 	}

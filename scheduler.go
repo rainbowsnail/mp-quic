@@ -1,7 +1,6 @@
 package quic
 
 import (
-	"github.com/lucas-clemente/quic-go/scheduling"
 	"time"
 
 	"github.com/lucas-clemente/quic-go/ackhandler"
@@ -14,12 +13,12 @@ type scheduler struct {
 	// XXX Currently round-robin based, inspired from MPTCP scheduler
 	quotas map[protocol.PathID]uint
 
-	handler scheduling.ScheduleHandler
+	handler ScheduleHandler
 }
 
 func (sch *scheduler) setup() {
 	sch.quotas = make(map[protocol.PathID]uint)
-	sch.handler = scheduling.NewEpicScheduling()
+	sch.handler = NewEpicScheduling()
 }
 
 func (sch *scheduler) getRetransmission(s *session) (hasRetransmission bool, retransmitPacket *ackhandler.Packet, pth *path) {
