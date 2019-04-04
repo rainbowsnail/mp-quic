@@ -378,9 +378,9 @@ func (sch *scheduler) sendPacket(s *session) error {
 	// this call triggers the flow controller to increase the flow control windows, if necessary
 	windowUpdateFrames := s.getWindowUpdateFrames(false)
 	// Tiny: WTF??? pth must be nil at this moment
-	// for _, wuf := range windowUpdateFrames {
-	// 	s.packer.QueueControlFrame(wuf, pth)
-	// }
+	for _, wuf := range windowUpdateFrames {
+		s.packer.QueueControlFrame(wuf, nil)
+	}
 
 	// Tiny: it's ugly now, but i cannot think a better way
 
@@ -483,6 +483,6 @@ func (sch *scheduler) sendPacket(s *session) error {
 			i++
 		}
 	}
-
+	windowUpdateFrames = s.getWindowUpdateFrames(false)
 	return sch.ackRemainingPaths(s, windowUpdateFrames)
 }
