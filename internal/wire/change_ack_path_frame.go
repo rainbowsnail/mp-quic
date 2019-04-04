@@ -29,6 +29,12 @@ func ParseChangeAckPathFrame(r *bytes.Reader, version protocol.VersionNumber) (*
 	var numPathToChange uint8
 	var err error
 
+	// read typeByte
+	_, err = r.ReadByte()
+	if err != nil {
+		return nil, err
+	}
+
 	numPathToChange, err = r.ReadByte()
 	if err != nil {
 		return nil, err
@@ -70,5 +76,5 @@ func (f *ChangeAckPathFrame) Write(b *bytes.Buffer, version protocol.VersionNumb
 
 // MinLength of a written frame
 func (f *ChangeAckPathFrame) MinLength(version protocol.VersionNumber) (protocol.ByteCount, error) {
-	return protocol.ByteCount(1 + 2 * len(f.AckReturnPaths)), nil
+	return protocol.ByteCount(2 + 2 * len(f.AckReturnPaths)), nil
 }
