@@ -222,8 +222,36 @@ func (sch *scheduler) selectPath(s *session, hasRetransmission bool, hasStreamRe
 	return sch.selectPathRoundRobin(s, hasRetransmission, hasStreamRetransmission, fromPth)
 }
 
-// Tiny: filter & sort paths
-// func (sch *scheduler) selectPaths(s *session, )
+// Tiny: helper function to decide if a path is available
+func pathAvailable(pth *path, hasRetransmission bool) bool {
+	return pth != nil && pth.open.Get() && (hasRetransmission || pth.SendingAllowed())
+}
+
+// Tiny: filter & sort paths, locks
+func (sch *scheduler) selectPaths(s *session, hasRetransmission bool) []*path {
+	s.pathsLock.RLock()
+	defer s.pathsLock.RUnlock()
+
+	if len(s.paths) <= 1 {
+		pth := s.paths[protocol.InitialPathID]
+		if pathAvailable(pth, hasRetransmission) {
+			return []*path{pth}
+		}
+		return nil
+	}
+
+	var ret []*path
+	for pid, pth := range s.paths {
+		if pid == protocol.InitialPathID || !pathAvailable(pth, hasRetransmission) {
+			continue
+		}
+		ret = append(ret, pth)
+	}
+
+	// Tiny: TODO we dont know how to sort now
+
+	return ret
+}
 
 // Lock of s.paths must be free (in case of log print)
 func (sch *scheduler) performPacketSending(s *session, windowUpdateFrames []*wire.WindowUpdateFrame, pth *path) (*ackhandler.Packet, bool, error) {
@@ -337,7 +365,7 @@ func (sch *scheduler) allocateStream(s *session, str *stream) {
 }
 
 func (sch *scheduler) sendPacket(s *session) error {
-	var pth *path
+	// var pth *path
 
 	// Update leastUnacked value of paths
 	s.pathsLock.RLock()
@@ -349,27 +377,24 @@ func (sch *scheduler) sendPacket(s *session) error {
 	// get WindowUpdate frames
 	// this call triggers the flow controller to increase the flow control windows, if necessary
 	windowUpdateFrames := s.getWindowUpdateFrames(false)
-	for _, wuf := range windowUpdateFrames {
-		s.packer.QueueControlFrame(wuf, pth)
-	}
+	// Tiny: WTF??? pth must be nil at this moment
+	// for _, wuf := range windowUpdateFrames {
+	// 	s.packer.QueueControlFrame(wuf, pth)
+	// }
 
-	// Repeatedly try sending until we don't have any more data, or run out of the congestion window
-	for {
-		// We first check for retransmissions
-		hasRetransmission, retransmitHandshakePacket, fromPth := sch.getRetransmission(s)
-		// XXX There might still be some stream frames to be retransmitted
-		hasStreamRetransmission := s.streamFramer.HasFramesForRetransmission()
+	// Tiny: it's ugly now, but i cannot think a better way
 
-		// Select the path here
-		s.pathsLock.RLock()
-		pth = sch.selectPath(s, hasRetransmission, hasStreamRetransmission, fromPth)
-		s.pathsLock.RUnlock()
+	// We first check for retransmissions
+	hasRetransmission, retransmitHandshakePacket, fromPth := sch.getRetransmission(s)
+	// XXX There might still be some stream frames to be retransmitted
+	hasStreamRetransmission := s.streamFramer.HasFramesForRetransmission()
 
-		// XXX No more path available, should we have a new QUIC error message?
-		if pth == nil {
-			windowUpdateFrames := s.getWindowUpdateFrames(false)
-			return sch.ackRemainingPaths(s, windowUpdateFrames)
-		}
+	// Tiny: get all available paths
+	pths := sch.selectPaths(s, hasRetransmission)
+	// Tiny: i'm confused with the logic of WUF frames and the purpose of ackRemainingPaths
+	//		 but still keep the logic
+	for i := 0; i < len(pths); {
+		pth := pths[i]
 
 		// If we have an handshake packet retransmission, do it directly
 		if hasRetransmission && retransmitHandshakePacket != nil {
@@ -381,72 +406,79 @@ func (sch *scheduler) sendPacket(s *session) error {
 			if err = s.sendPackedPacket(packet, pth); err != nil {
 				return err
 			}
-			continue
-		}
+		} else {
+			// XXX Some automatic ACK generation should be done someway
+			var ack *wire.AckFrame
 
-		// XXX Some automatic ACK generation should be done someway
-		var ack *wire.AckFrame
-
-		ack = pth.GetAckFrame()
-		if ack != nil {
-			s.packer.QueueControlFrame(ack, pth)
-		}
-		if ack != nil || hasStreamRetransmission {
-			swf := pth.sentPacketHandler.GetStopWaitingFrame(hasStreamRetransmission)
-			if swf != nil {
-				s.packer.QueueControlFrame(swf, pth)
+			ack = pth.GetAckFrame()
+			if ack != nil {
+				s.packer.QueueControlFrame(ack, pth)
 			}
-		}
-
-		// Also add CLOSE_PATH frames, if any
-		for cpf := s.streamFramer.PopClosePathFrame(); cpf != nil; cpf = s.streamFramer.PopClosePathFrame() {
-			s.packer.QueueControlFrame(cpf, pth)
-		}
-
-		// Also add ADD ADDRESS frames, if any
-		for aaf := s.streamFramer.PopAddAddressFrame(); aaf != nil; aaf = s.streamFramer.PopAddAddressFrame() {
-			s.packer.QueueControlFrame(aaf, pth)
-		}
-
-		// Also add PATHS frames, if any
-		for pf := s.streamFramer.PopPathsFrame(); pf != nil; pf = s.streamFramer.PopPathsFrame() {
-			s.packer.QueueControlFrame(pf, pth)
-		}
-
-		pkt, sent, err := sch.performPacketSending(s, windowUpdateFrames, pth)
-		if err != nil {
-			return err
-		}
-		windowUpdateFrames = nil
-		if !sent {
-			// Prevent sending empty packets
-			return sch.ackRemainingPaths(s, windowUpdateFrames)
-		}
-
-		// Duplicate traffic when it was sent on an unknown performing path
-		// FIXME adapt for new paths coming during the connection
-		if pth.rttStats.SmoothedRTT() == 0 {
-			currentQuota := sch.quotas[pth.pathID]
-			// Was the packet duplicated on all potential paths?
-		duplicateLoop:
-			for pathID, tmpPth := range s.paths {
-				if pathID == protocol.InitialPathID || pathID == pth.pathID {
-					continue
-				}
-				if sch.quotas[pathID] < currentQuota && tmpPth.sentPacketHandler.SendingAllowed() {
-					// Duplicate it
-					pth.sentPacketHandler.DuplicatePacket(pkt)
-					break duplicateLoop
+			if ack != nil || hasStreamRetransmission {
+				swf := pth.sentPacketHandler.GetStopWaitingFrame(hasStreamRetransmission)
+				if swf != nil {
+					s.packer.QueueControlFrame(swf, pth)
 				}
 			}
-		}
 
-		// And try pinging on potentially failed paths
-		if fromPth != nil && fromPth.potentiallyFailed.Get() {
-			err = s.sendPing(fromPth)
+			// Also add CLOSE_PATH frames, if any
+			for cpf := s.streamFramer.PopClosePathFrame(); cpf != nil; cpf = s.streamFramer.PopClosePathFrame() {
+				s.packer.QueueControlFrame(cpf, pth)
+			}
+
+			// Also add ADD ADDRESS frames, if any
+			for aaf := s.streamFramer.PopAddAddressFrame(); aaf != nil; aaf = s.streamFramer.PopAddAddressFrame() {
+				s.packer.QueueControlFrame(aaf, pth)
+			}
+
+			// Also add PATHS frames, if any
+			for pf := s.streamFramer.PopPathsFrame(); pf != nil; pf = s.streamFramer.PopPathsFrame() {
+				s.packer.QueueControlFrame(pf, pth)
+			}
+
+			pkt, sent, err := sch.performPacketSending(s, windowUpdateFrames, pth)
 			if err != nil {
 				return err
 			}
+			windowUpdateFrames = nil
+			if !sent {
+				// Tiny: empty packet, we switch to next path
+				i++
+			} else if pth.rttStats.SmoothedRTT() == 0 {
+				// Duplicate traffic when it was sent on an unknown performing path
+				// FIXME adapt for new paths coming during the connection
+				currentQuota := sch.quotas[pth.pathID]
+				// Was the packet duplicated on all potential paths?
+			duplicateLoop:
+				for pathID, tmpPth := range s.paths {
+					if pathID == protocol.InitialPathID || pathID == pth.pathID {
+						continue
+					}
+					if sch.quotas[pathID] < currentQuota && tmpPth.sentPacketHandler.SendingAllowed() {
+						// Duplicate it
+						pth.sentPacketHandler.DuplicatePacket(pkt)
+						break duplicateLoop
+					}
+				}
+			}
+
+			// And try pinging on potentially failed paths
+			if fromPth != nil && fromPth.potentiallyFailed.Get() {
+				err = s.sendPing(fromPth)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		// Tiny: copy
+		hasRetransmission, retransmitHandshakePacket, fromPth = sch.getRetransmission(s)
+		hasStreamRetransmission = s.streamFramer.HasFramesForRetransmission()
+		// Tiny: if this path is not available switch to next
+		if i < len(pths) && !pathAvailable(pths[i], hasRetransmission) {
+			i++
 		}
 	}
+
+	return sch.ackRemainingPaths(s, windowUpdateFrames)
 }

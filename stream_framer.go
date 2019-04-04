@@ -35,7 +35,11 @@ func (f *streamFramer) AddFrameForRetransmission(frame *wire.StreamFrame) {
 
 func (f *streamFramer) PopStreamFrames(maxLen protocol.ByteCount, pth *path) []*wire.StreamFrame {
 	fs, currentLen := f.maybePopFramesForRetransmission(maxLen)
-	return append(fs, f.maybePopNormalFrames(maxLen-currentLen, pth)...)
+	// Tiny: if path CC we should only consider retransmission
+	if pth.SendingAllowed() {
+		fs = append(fs, f.maybePopNormalFrames(maxLen-currentLen, pth)...)
+	}
+	return fs
 }
 
 func (f *streamFramer) PopBlockedFrame() *wire.BlockedFrame {
