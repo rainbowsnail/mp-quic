@@ -471,7 +471,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 		
 		// Also add ACK RETURN PATHS frames, if any
 		if s.perspective == protocol.PerspectiveServer {
-			for arpf := s.streamFramer.PopAckReturnPathsFrame(); arpf != nil; arpf = s.streamFramer.PopAckReturnPathsFrame() {
+			for arpf := s.streamFramer.PopAckReturnPathsFrame(s); arpf != nil; arpf = s.streamFramer.PopAckReturnPathsFrame(s) {
 				utils.Infof("ACK RETURN PATHS frames send on %x", pth.pathID)
 				s.packer.QueueControlFrame(arpf, pth)
 			}
