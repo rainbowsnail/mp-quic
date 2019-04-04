@@ -436,14 +436,17 @@ func (sch *scheduler) sendPacket(s *session) error {
 		for _, tmpPath := range s.paths{
 			ack = tmpPath.GetAckFrameOnPath(pth.pathID)
 			// TODO-Jing: ack packets on other path and dup ack 
-			if ack != nil && sch.shouldInstigateDupAck.Get() {
-				sch.shouldInstigateDupAck.Set(false)
-				sch.dupAckFrame = ack
+			if s.perspective == protocol.PerspectiveClient {
+			
+				if ack != nil && sch.shouldInstigateDupAck.Get() {
+					sch.shouldInstigateDupAck.Set(false)
+					sch.dupAckFrame = ack
 				
-				for pathID, p := range s.paths{
-					if p != pth {
-						utils.Infof("shouldSendDupAck on Path %x", pathID)
-						sch.shouldSendDupAck[pathID] = true
+					for pathID, p := range s.paths{
+						if p != pth {
+							utils.Infof("shouldSendDupAck on Path %x", pathID)
+							sch.shouldSendDupAck[pathID] = true
+						}
 					}
 				}
 			}
