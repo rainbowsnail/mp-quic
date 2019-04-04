@@ -56,6 +56,8 @@ func ParseChangeAckPathFrame(r *bytes.Reader, version protocol.VersionNumber) (*
 
 // Write writes an Change Ack Path frame.
 func (f *ChangeAckPathFrame) Write(b *bytes.Buffer, version protocol.VersionNumber) error {
+	typeByte := uint8(0x13)
+	b.WriteByte(typeByte)
 	var numPathToChange uint8
 	numPathToChange = uint8(len(f.AckReturnPaths))
 	b.WriteByte(numPathToChange)

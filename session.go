@@ -557,6 +557,7 @@ func (s *session) handleFrames(fs []wire.Frame, p *path) error {
 				}
 			}
 			s.pathsLock.RUnlock()
+			s.scheduler.shouldInstigateDupAck.Set(true)
 		default:
 			return errors.New("Session BUG: unexpected frame type")
 		}
