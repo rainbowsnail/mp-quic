@@ -569,6 +569,7 @@ func (h *sentPacketHandler) queueRTO(el *PacketElement) {
 }
 
 func (h *sentPacketHandler) queuePacketForRetransmission(packetElement *PacketElement) {
+	utils.Debugf("queue restransmission called")
 	packet := &packetElement.Value
 	h.bytesInFlight -= packet.Length
 	h.retransmissionQueue = append(h.retransmissionQueue, packet)
@@ -577,6 +578,7 @@ func (h *sentPacketHandler) queuePacketForRetransmission(packetElement *PacketEl
 }
 
 func (h *sentPacketHandler) DuplicatePacket(packet *Packet) {
+	utils.Debugf("duplicate packet called")
 	h.retransmissionQueue = append(h.retransmissionQueue, packet)
 }
 

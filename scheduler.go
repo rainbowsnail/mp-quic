@@ -436,31 +436,35 @@ func (sch *scheduler) sendPacket(s *session) error {
 				s.packer.QueueControlFrame(pf, pth)
 			}
 
-			pkt, sent, err := sch.performPacketSending(s, windowUpdateFrames, pth)
+			_, sent, err := sch.performPacketSending(s, windowUpdateFrames, pth)
 			if err != nil {
 				return err
 			}
 			windowUpdateFrames = nil
 			if !sent {
+				utils.Debugf("empty packet on %v, switch to next", pth.pathID)
 				// Tiny: empty packet, we switch to next path
 				i++
-			} else if pth.rttStats.SmoothedRTT() == 0 {
-				// Duplicate traffic when it was sent on an unknown performing path
-				// FIXME adapt for new paths coming during the connection
-				currentQuota := sch.quotas[pth.pathID]
-				// Was the packet duplicated on all potential paths?
-			duplicateLoop:
-				for pathID, tmpPth := range s.paths {
-					if pathID == protocol.InitialPathID || pathID == pth.pathID {
-						continue
-					}
-					if sch.quotas[pathID] < currentQuota && tmpPth.sentPacketHandler.SendingAllowed() {
-						// Duplicate it
-						pth.sentPacketHandler.DuplicatePacket(pkt)
-						break duplicateLoop
-					}
-				}
 			}
+			// Tiny: we remove the duplicate sending for it cause serious bug
+			// } else if pth.rttStats.SmoothedRTT() == 0 {
+			// 	// Duplicate traffic when it was sent on an unknown performing path
+			// 	// FIXME adapt for new paths coming during the connection
+			// 	currentQuota := sch.quotas[pth.pathID]
+			// 	// Was the packet duplicated on all potential paths?
+			// duplicateLoop:
+			// 	for pathID, tmpPth := range s.paths {
+			// 		if pathID == protocol.InitialPathID || pathID == pth.pathID {
+			// 			continue
+			// 		}
+			// 		if sch.quotas[pathID] < currentQuota && tmpPth.sentPacketHandler.SendingAllowed() {
+			// 			// Duplicate it
+			// 			// Tiny: WTF??
+			// 			tmpPth.sentPacketHandler.DuplicatePacket(pkt)
+			// 			break duplicateLoop
+			// 		}
+			// 	}
+			// }
 
 			// And try pinging on potentially failed paths
 			if fromPth != nil && fromPth.potentiallyFailed.Get() {

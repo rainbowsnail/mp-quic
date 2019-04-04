@@ -177,10 +177,10 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 	for _, sid := range streams {
 		s := f.streamsMap.streams[sid]
 
-		// Tiny: it cannot be this case
-		// if s == nil || s.streamID == 1 /* crypto stream is handled separately */ {
-		// 	continue
-		// }
+		// Tiny: now we wont delete streams from stream queue, so double check
+		if s == nil || s.streamID == 1 /* crypto stream is handled separately */ {
+			continue
+		}
 
 		// Tiny: repeatedly fill the packet with current stream until full or stream not available
 		for {
@@ -197,10 +197,12 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 			lenStreamData := s.lenOfDataForWriting()
 			if lenStreamData != 0 {
 				sendWindowSize, _ = f.flowControlManager.SendWindowSize(s.streamID)
+				utils.Debugf("stream %v swnd %v", sid, sendWindowSize)
 				maxLen = utils.MinByteCount(maxLen, sendWindowSize)
 
 				// Tiny: apply path limit
 				pathLimit := handler.GetPathStreamLimit(pth.pathID, sid)
+				utils.Debugf("path %v stream %v limit %v", pth.pathID, sid, pathLimit)
 				maxLen = utils.MinByteCount(maxLen, pathLimit)
 			}
 
