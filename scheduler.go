@@ -470,9 +470,11 @@ func (sch *scheduler) sendPacket(s *session) error {
 		}
 		
 		// Also add ACK RETURN PATHS frames, if any
-		for arpf := s.streamFramer.PopAckReturnPathsFrame(); arpf != nil; arpf = s.streamFramer.PopAckReturnPathsFrame() {
-			utils.Infof("ACK RETURN PATHS frames send on %x", pth.pathID)
-			s.packer.QueueControlFrame(arpf, pth)
+		if s.perspective == protocol.PerspectiveServer {
+			for arpf := s.streamFramer.PopAckReturnPathsFrame(); arpf != nil; arpf = s.streamFramer.PopAckReturnPathsFrame() {
+				utils.Infof("ACK RETURN PATHS frames send on %x", pth.pathID)
+				s.packer.QueueControlFrame(arpf, pth)
+			}
 		}
 		// Also add CLOSE_PATH frames, if any
 		for cpf := s.streamFramer.PopClosePathFrame(); cpf != nil; cpf = s.streamFramer.PopClosePathFrame() {

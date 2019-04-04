@@ -68,5 +68,5 @@ func (f *ChangeAckPathFrame) Write(b *bytes.Buffer, version protocol.VersionNumb
 
 // MinLength of a written frame
 func (f *ChangeAckPathFrame) MinLength(version protocol.VersionNumber) (protocol.ByteCount, error) {
-	return 1 + 2, nil
+	return protocol.ByteCount(1 + 2 * len(f.AckReturnPaths)), nil
 }
