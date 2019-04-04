@@ -2,12 +2,15 @@ package quic
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
+	"os"
 	"time"
 
 	"github.com/lucas-clemente/quic-go/internal/handshake"
 	"github.com/lucas-clemente/quic-go/internal/protocol"
+	"github.com/lucas-clemente/quic-go/internal/utils"
 )
 
 // The StreamID is the ID of a QUIC stream.
@@ -133,4 +136,21 @@ type Listener interface {
 	Addr() net.Addr
 	// Accept returns new sessions. It should be called in a loop.
 	Accept() (Session, error)
+}
+
+// SetLogLevel sets log level
+// Tiny: expose this to outside
+func SetLogLevel(level string) {
+	switch level {
+	case "debug":
+		utils.SetLogLevel(utils.LogLevelDebug)
+	case "info":
+		utils.SetLogLevel(utils.LogLevelInfo)
+	case "error":
+		utils.SetLogLevel(utils.LogLevelError)
+	case "nothing":
+		utils.SetLogLevel(utils.LogLevelNothing)
+	default:
+		fmt.Fprintln(os.Stderr, "invalid quic-go log level, see https://github.com/lucas-clemente/quic-go/wiki/Logging")
+	}
 }
