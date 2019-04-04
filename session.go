@@ -473,6 +473,7 @@ func (s *session) UpdateAllReturnPath(ackPathID protocol.PathID)  {
 	for _, p := range s.paths {
 		//if p.rttStats.SmoothedRTT() != 0 && p.rttStats.SmoothedRTT() > rttStats.SmoothedRTT() {
 		if(p.ackPathID != ackPathID){
+			utils.Infof("session change path %x ackPathID %x to %x", p.pathID, p.ackPathID, ackPathID)
 			p.ackPathID = ackPathID
 			p.updateAckPathID = true
 		}
@@ -616,7 +617,9 @@ func (s *session) handleStreamFrame(frame *wire.StreamFrame) error {
 
 func (s *session) handleAckReturnPathFrame(frame *wire.ChangeAckPathFrame) error {
 	// TODO: check time and other error
+	utils.Infof("handleAckReturnPathFrame")
 	for pathID, ackRtnPath := range frame.AckReturnPaths{
+		utils.Infof("change path %x 's ackpath %x to %x", pathID, s.paths[pathID].ackPathID, ackRtnPath)
 		s.paths[pathID].ackPathID = ackRtnPath
 	}
 	return nil
