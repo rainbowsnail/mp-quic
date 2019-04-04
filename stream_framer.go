@@ -234,7 +234,7 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 			dataLen := frame.DataLen()
 			// Tiny: its from original quic-go
 			f.flowControlManager.AddBytesSent(s.streamID, dataLen)
-			utils.Infof("path %v consume %v bytes on stream %v", pth.pathID, dataLen, sid)
+			utils.Debugf("path %v consume %v bytes on stream %v", pth.pathID, dataLen, sid)
 			// Tiny: although it works even if dataLen == 0, we still checks
 			if dataLen > 0 {
 				handler.ConsumePathBytes(pth.pathID, sid, dataLen)

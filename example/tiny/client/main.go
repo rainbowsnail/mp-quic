@@ -41,6 +41,6 @@ func testRequest() {
 
 func main() {
 	flag.Parse()
-	utils.SetLogLevel(utils.LogLevelDebug)
+	utils.SetLogLevel(utils.LogLevelInfo)
 	testRequest()
 }
