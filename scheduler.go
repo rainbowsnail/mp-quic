@@ -469,7 +469,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 				}
 			}
 		}
-		if ack != nil || hasStreamRetransmission {
+		if hasAck || hasStreamRetransmission {
 			swf := pth.sentPacketHandler.GetStopWaitingFrame(hasStreamRetransmission)
 			if swf != nil {
 				s.packer.QueueControlFrame(swf, pth)
@@ -532,5 +532,6 @@ func (sch *scheduler) sendPacket(s *session) error {
 				return err
 			}
 		}
+		return sch.ackRemainingPaths(s, windowUpdateFrames)
 	}
 }
