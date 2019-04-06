@@ -477,6 +477,7 @@ func (s *session) UpdateAllReturnPath(ackPathID protocol.PathID)  {
 				p.ackPathID = ackPathID
 				p.updateAckPathID = true
 				//p.rttStats.OnConnectionMigration()
+				//p.sentPacketHandler.largestReceivedPacketWithAck = 0
 				p.rttStatsPaths = make(map[protocol.PathID]*congestion.RTTStats)
 			}
 		}

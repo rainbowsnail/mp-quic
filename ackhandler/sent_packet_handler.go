@@ -192,7 +192,7 @@ func (h *sentPacketHandler) ReceivedAck(ackFrame *wire.AckFrame, withPacketNumbe
 
 	// duplicate or out-of-order ACK
 	if withPacketNumber <= h.largestReceivedPacketWithAck {
-		return ErrDuplicateOrOutOfOrderAck, returnPathRttUpdated
+		//return ErrDuplicateOrOutOfOrderAck, returnPathRttUpdated
 	}
 	h.largestReceivedPacketWithAck = withPacketNumber
 
@@ -220,6 +220,7 @@ func (h *sentPacketHandler) ReceivedAck(ackFrame *wire.AckFrame, withPacketNumbe
 	if len(ackedPackets) > 0 {
 		for _, p := range ackedPackets {
 			h.onPacketAcked(p)
+			utils.Infof("congestion update after ack")
 			h.congestion.OnPacketAcked(p.Value.PacketNumber, p.Value.Length, h.bytesInFlight)
 		}
 	}
