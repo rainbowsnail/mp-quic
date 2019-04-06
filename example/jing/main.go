@@ -64,7 +64,8 @@ func main() {
 	verbose := flag.Bool("v", true, "verbose")
 	bs := binds{}
 	flag.Var(&bs, "bind", "bind to")
-	certPath := flag.String("certpath", getBuildDir(), "certificate directory")
+	certPath := flag.String("certpath", path.Dir("."), "certificate directory")
+	//certPath := flag.String("certpath", getBuildDir(), "certificate directory")
 	www := flag.String("www", "/var/www", "www data")
 	tcp := flag.Bool("tcp", false, "also listen on TCP")
 	flag.Parse()

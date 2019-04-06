@@ -559,7 +559,7 @@ func (s *session) handleFrames(fs []wire.Frame, p *path) error {
 				}
 			}
 			s.pathsLock.RUnlock()
-			//s.scheduler.shouldInstigateDupAck.Set(true)
+			s.scheduler.shouldInstigateDupAck.Set(true)
 		default:
 			return errors.New("Session BUG: unexpected frame type")
 		}
@@ -621,6 +621,7 @@ func (s *session) handleStreamFrame(frame *wire.StreamFrame) error {
 
 func (s *session) handleAckReturnPathFrame(frame *wire.ChangeAckPathFrame) error {
 	// TODO: check time and other error
+	//return nil
 	if s.perspective == protocol.PerspectiveClient {
 		for pathID, ackRtnPath := range frame.AckReturnPaths{
 			s.paths[pathID].ackPathID = ackRtnPath

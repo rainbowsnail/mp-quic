@@ -33,7 +33,7 @@ func (sch *scheduler) setup() {
 	now := time.Now()
 	sch.lastDupAckTime = now
 	sch.timer = utils.NewTimer()
-	go sch.run()
+	//go sch.run()
 }
 
 func (sch *scheduler) run() {
@@ -351,7 +351,7 @@ func (sch *scheduler) ackRemainingPaths(s *session, totalWindowUpdateFrames []*w
 			s.packer.QueueControlFrame(wuf, pthTmp)
 		}
 		if hasAck || len(windowUpdateFrames) > 0 {
-			if pthTmp.pathID == protocol.InitialPathID && hasAck == false {
+			if pthTmp.pathID == protocol.InitialPathID && !hasAck {
 				continue
 			}
 			swf := pthTmp.GetStopWaitingFrame(false)
@@ -505,6 +505,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 		if !sent {
 			// Prevent sending empty packets
 			return sch.ackRemainingPaths(s, windowUpdateFrames)
+			//return nil
 		}
 
 		// Duplicate traffic when it was sent on an unknown performing path
