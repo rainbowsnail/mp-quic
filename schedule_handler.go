@@ -3,8 +3,11 @@ package quic
 import (
 	"github.com/lucas-clemente/quic-go/internal/protocol"
 	"github.com/lucas-clemente/quic-go/internal/utils"
+
+	"math"
 	"sort"
 	"sync"
+	"time"
 )
 
 // ScheduleHandler deal with scheduling
@@ -26,6 +29,20 @@ type ScheduleHandler interface {
 type streamInfo struct {
 	bytes protocol.ByteCount
 	alloc map[protocol.PathID]protocol.ByteCount
+}
+
+type pathInfo struct {
+	queue time.Duration
+	rtt   time.Duration
+
+	// bytes per second
+	thr float64
+	// queue time + rtt in second
+	totQue float64
+	// temporary size allocation (maybe not integer and maybe < 0)
+	si float64
+	// final size allocation
+	size protocol.ByteCount
 }
 
 type epicScheduling struct {
@@ -64,12 +81,31 @@ func (e *epicScheduling) updateStreamQueue() {
 	})
 }
 
+func (e *epicScheduling) getPathInfo() map[protocol.PathID]*pathInfo {
+	ret := make(map[protocol.PathID]*pathInfo)
+	for _, pid := range e.paths {
+		// Tiny: should this have lock?
+		pth := e.sess.paths[pid]
+		ret[pid] = &pathInfo{
+			thr: float64(pth.sentPacketHandler.GetBandwidthEstimate()) / 8.0,
+			rtt: pth.rttStats.SmoothedRTT(),
+		}
+	}
+	return ret
+}
+
 // Tiny: not thread safe
 func (e *epicScheduling) rearrangeStreams() {
 	e.updateStreamQueue()
 
 	if len(e.paths) == 0 {
 		return
+	}
+
+	pathInfo := e.getPathInfo()
+	var bwSum float64
+	for _, p := range pathInfo {
+		bwSum += p.thr
 	}
 
 	for _, sid := range e.streamQueue {
@@ -79,17 +115,54 @@ func (e *epicScheduling) rearrangeStreams() {
 			delete(s.alloc, t)
 		}
 
-		// Tiny: TODO now we just simply average
-		bytes := s.bytes
-		cnt := len(e.paths)
-		avg := s.bytes / protocol.ByteCount(cnt)
-		for _, pth := range e.paths {
-			cnt--
-			if cnt > 0 {
-				s.alloc[pth] = avg
-				bytes -= avg
-			} else {
-				s.alloc[pth] = bytes
+		// Tiny: actually there are headers but we ignore them
+		if s.bytes < protocol.MaxPacketSize {
+			// Tiny: if the stream is small enough, find a path with minimal queue + rtt
+			var (
+				mini time.Duration = 1<<63 - 1
+				k    protocol.PathID
+			)
+			for pid, p := range pathInfo {
+				if mini > p.rtt+p.queue {
+					mini = p.rtt + p.queue
+					k = pid
+				}
+			}
+
+			pathInfo[k].size = s.bytes
+		} else {
+			// Tiny: minimize total queue time
+			bytes := float64(s.bytes)
+
+			var queBDPSum float64
+			for _, p := range pathInfo {
+				p.totQue = float64(p.queue+p.rtt) / float64(time.Second)
+				queBDPSum += p.thr * p.totQue
+			}
+			k := (bytes + queBDPSum) / bwSum
+
+			for _, p := range pathInfo {
+				p.si = p.thr * (k - p.totQue)
+			}
+
+			// Tiny: this part convert float size to integer & non-negative, i dont know if it works well
+			delta := int64(s.bytes)
+			for _, p := range pathInfo {
+				p.size = protocol.ByteCount(math.Max(math.Floor(p.si), 0))
+				delta -= int64(p.size)
+			}
+
+			for _, p := range pathInfo {
+				if p.size > 0 && int64(p.size)+delta >= 0 {
+					p.size = protocol.ByteCount(int64(p.size) + delta)
+				}
+			}
+		}
+
+		for pid, p := range pathInfo {
+			s.alloc[pid] = p.size
+			if p.size > 0 {
+				p.queue += p.rtt + time.Duration(float64(time.Second)*float64(p.size)/p.thr)
 			}
 		}
 	}
