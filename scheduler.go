@@ -532,6 +532,6 @@ func (sch *scheduler) sendPacket(s *session) error {
 				return err
 			}
 		}
-		return sch.ackRemainingPaths(s, windowUpdateFrames)
+		//return sch.ackRemainingPaths(s, windowUpdateFrames)
 	}
 }

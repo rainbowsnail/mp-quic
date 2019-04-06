@@ -89,7 +89,7 @@ type sentPacketHandler struct {
 }
 
 // NewSentPacketHandler creates a new sentPacketHandler
-func NewSentPacketHandler(rttStats *congestion.RTTStats, rttStatsPaths map[protocol.PathID]*congestion.RTTStats, cong congestion.SendAlgorithm, onRTOCallback func(time.Time) bool) SentPacketHandler {
+func NewSentPacketHandler(rttStats *congestion.RTTStats, rttStatsPaths *map[protocol.PathID]*congestion.RTTStats, cong congestion.SendAlgorithm, onRTOCallback func(time.Time) bool) SentPacketHandler {
 	var congestionControl congestion.SendAlgorithm
 
 	if cong != nil {
@@ -108,7 +108,7 @@ func NewSentPacketHandler(rttStats *congestion.RTTStats, rttStatsPaths map[proto
 		packetHistory:      NewPacketList(),
 		stopWaitingManager: stopWaitingManager{},
 		rttStats:           rttStats,
-		rttStatsPaths:		rttStatsPaths,
+		rttStatsPaths:		*rttStatsPaths,
 		congestion:         congestionControl,
 		onRTOCallback:      onRTOCallback,
 	}
@@ -186,6 +186,7 @@ func (h *sentPacketHandler) ReceivedAck(ackFrame *wire.AckFrame, withPacketNumbe
 		returnPathRttUpdated = h.maybeUpdateReturnPathRTT(ackFrame.LargestAcked, ackFrame.DelayTime, rcvTime, ackFrame.ReceivedPathID)
 	}
 	if ackFrame.LargestAcked > h.lastSentPacketNumber {
+		//returnPathRttUpdated = true
 		return errAckForUnsentPacket, returnPathRttUpdated
 	}
 
@@ -353,7 +354,7 @@ func (h *sentPacketHandler) maybeUpdateReturnPathRTT(largestAcked protocol.Packe
 	utils.Infof("largestAcked = %x", largestAcked)
 	for el := h.packetHistory.Front(); el != nil; el = el.Next() {
 		packet := el.Value
-		//utils.Infof("PacketNumber = %x", packet.PacketNumber)
+		utils.Infof("PacketNumber = %x", packet.PacketNumber)
 		if packet.PacketNumber == largestAcked {
 			utils.Infof("updateReturnPathRTT on path %x", rtnPathID)
 			if _, ok := h.rttStatsPaths[rtnPathID]; !ok{

@@ -476,6 +476,8 @@ func (s *session) UpdateAllReturnPath(ackPathID protocol.PathID)  {
 			if(p.ackPathID != ackPathID){
 				p.ackPathID = ackPathID
 				p.updateAckPathID = true
+				//p.rttStats.OnConnectionMigration()
+				p.rttStatsPaths = make(map[protocol.PathID]*congestion.RTTStats)
 			}
 		}
 	}
@@ -557,7 +559,7 @@ func (s *session) handleFrames(fs []wire.Frame, p *path) error {
 				}
 			}
 			s.pathsLock.RUnlock()
-			s.scheduler.shouldInstigateDupAck.Set(true)
+			//s.scheduler.shouldInstigateDupAck.Set(true)
 		default:
 			return errors.New("Session BUG: unexpected frame type")
 		}
@@ -660,7 +662,7 @@ func (s *session) handleAckFrame(frame *wire.AckFrame) error {
 	err, returnPathRttUpdated := pth.sentPacketHandler.ReceivedAck(frame, pth.lastRcvdPacketNumber, pth.lastNetworkActivityTime, pth.ackPathID)
 
 	if s.perspective == protocol.PerspectiveServer {
-		if err == nil && returnPathRttUpdated{
+		if returnPathRttUpdated{
 			// Choose new ack return path
 			returnPathUpdated := pth.UpdateReturnPath()
 			if returnPathUpdated == true {

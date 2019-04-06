@@ -67,7 +67,7 @@ func (p *path) setup(oliaSenders map[protocol.PathID]*congestion.OliaSender) {
 		oliaSenders[p.pathID] = cong.(*congestion.OliaSender)
 	}
 
-	sentPacketHandler := ackhandler.NewSentPacketHandler(p.rttStats, p.rttStatsPaths, cong, p.onRTO)
+	sentPacketHandler := ackhandler.NewSentPacketHandler(p.rttStats, &(p.rttStatsPaths), cong, p.onRTO)
 
 	now := time.Now()
 
@@ -133,7 +133,12 @@ runLoop:
 func (p* path) UpdateReturnPath() bool {
 	smallestRTT := p.rttStats.SmoothedRTT()
 	smallestPathID := p.ackPathID
+	utils.Infof("cur smallestRTT = %v on path%x", smallestRTT, smallestPathID)
 	for pathID, rttStats := range p.rttStatsPaths{
+		if pathID == p.ackPathID {
+			continue
+		}
+		utils.Infof("Path %x rtt = %v", pathID, rttStats.SmoothedRTT())
 		if rttStats.SmoothedRTT() != 0 && smallestRTT > rttStats.SmoothedRTT() {
 			smallestRTT = rttStats.SmoothedRTT()
 			smallestPathID = pathID
@@ -145,6 +150,7 @@ func (p* path) UpdateReturnPath() bool {
 //		utils.Infof("Path.go: UpdateReturnPath for path %x", p.pathID)
 		//return true
 //	}
+	utils.Infof("UpdateReturnPath in %x", p.pathID)
 	p.sess.UpdateAllReturnPath(smallestPathID)
 	return true
 	//return false
