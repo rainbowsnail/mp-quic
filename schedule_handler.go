@@ -81,6 +81,15 @@ func (e *epicScheduling) updateStreamQueue() {
 	})
 }
 
+func (e *epicScheduling) updatePath() {
+	// Tiny: it may cause race
+	sort.Slice(e.paths, func(i, j int) bool {
+		rtt1 := e.sess.paths[e.paths[i]].rttStats.SmoothedRTT()
+		rtt2 := e.sess.paths[e.paths[j]].rttStats.SmoothedRTT()
+		return rtt1 < rtt2
+	})
+}
+
 func (e *epicScheduling) getPathInfo() map[protocol.PathID]*pathInfo {
 	ret := make(map[protocol.PathID]*pathInfo)
 	for _, pid := range e.paths {
@@ -96,6 +105,7 @@ func (e *epicScheduling) getPathInfo() map[protocol.PathID]*pathInfo {
 
 // Tiny: not thread safe
 func (e *epicScheduling) rearrangeStreams() {
+	e.updatePath()
 	e.updateStreamQueue()
 
 	if len(e.paths) == 0 {
