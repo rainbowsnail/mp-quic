@@ -357,10 +357,10 @@ func (sch *scheduler) ackRemainingPaths(s *session, totalWindowUpdateFrames []*w
 // Tiny: called when stream issue a write
 func (sch *scheduler) allocateStream(s *session, str *stream) {
 	bytes := str.lenOfDataForWriting()
-	if bytes <= 0 {
-		return
-	}
-	utils.Infof("stream %v write %v bytes", str.streamID, bytes)
+	// if bytes <= 0 {
+	// 	return
+	// }
+	// utils.Infof("stream %v write %v bytes", str.streamID, bytes)
 	sch.handler.AddStreamByte(str.streamID, bytes)
 }
 

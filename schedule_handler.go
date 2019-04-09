@@ -182,14 +182,14 @@ func (e *epicScheduling) AddStreamByte(streamID protocol.StreamID, bytes protoco
 	e.Lock()
 	defer e.Unlock()
 
-	utils.Infof("add stream %v %v bytes", streamID, bytes)
+	utils.Debugf("add stream %v %v bytes", streamID, bytes)
 
 	if s, ok := e.streams[streamID]; ok {
-		if s.bytes > 0 {
-			utils.Errorf("try duplicate add stream %v bytes, ignore", streamID)
-			return
-		}
-		s.bytes = bytes
+		// if s.bytes > 0 {
+		// 	utils.Errorf("try duplicate add stream %v bytes, ignore", streamID)
+		// 	return
+		// }
+		s.bytes += bytes
 	} else {
 		e.streams[streamID] = &streamInfo{
 			bytes: bytes,
@@ -238,6 +238,7 @@ func (e *epicScheduling) ConsumePathBytes(pathID protocol.PathID, streamID proto
 	defer e.Unlock()
 	if s, ok := e.streams[streamID]; ok {
 		if b, ok := s.alloc[pathID]; ok && s.bytes >= bytes && b >= bytes {
+			utils.Debugf("stream %v consume %v from path %v", streamID, bytes, pathID)
 			s.bytes -= bytes
 			// s.alloc[pathID] -= bytes
 			e.rearrangeStreams()

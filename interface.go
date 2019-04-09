@@ -22,6 +22,8 @@ type VersionNumber = protocol.VersionNumber
 // A Cookie can be used to verify the ownership of the client address.
 type Cookie = handshake.Cookie
 
+type ByteCount = protocol.ByteCount
+
 // Stream is the interface implemented by QUIC streams
 type Stream interface {
 	// Read reads data from the stream.
@@ -55,9 +57,9 @@ type Stream interface {
 	// SetReadDeadline and SetWriteDeadline.
 	SetDeadline(t time.Time) error
 	// GetBytesSent returns the number of bytes of the stream that were sent to the peer
-	GetBytesSent() (protocol.ByteCount, error)
+	GetBytesSent() (ByteCount, error)
 	// GetBytesRetrans returns the number of bytes of the stream that were retransmitted to the peer
-	GetBytesRetrans() (protocol.ByteCount, error)
+	GetBytesRetrans() (ByteCount, error)
 }
 
 // A Session is a QUIC connection between two peers.
