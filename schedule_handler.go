@@ -165,6 +165,7 @@ func (e *epicScheduling) rearrangeStreams() {
 			for _, p := range pathInfo {
 				if p.size > 0 && int64(p.size)+delta >= 0 {
 					p.size = protocol.ByteCount(int64(p.size) + delta)
+					break
 				}
 			}
 		}
