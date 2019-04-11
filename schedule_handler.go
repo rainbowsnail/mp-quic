@@ -45,6 +45,18 @@ type pathInfo struct {
 	size protocol.ByteCount
 }
 
+type depNode struct {
+	id     protocol.StreamID
+	parent *depNode
+	child  []*depNode
+
+	size      float64
+	sumWeight float64
+	weight    float64
+	prop      float64
+	delay     float64
+}
+
 type epicScheduling struct {
 	sync.RWMutex
 
@@ -68,9 +80,60 @@ func (e *epicScheduling) setup() {
 	e.streams = make(map[protocol.StreamID]*streamInfo)
 }
 
+func (n *depNode) dfs() {
+	if n.parent != nil {
+		if n.weight > 0 {
+			n.prop = n.parent.prop * n.weight / n.parent.sumWeight
+			n.delay = n.parent.delay + n.size/n.prop
+		} else {
+			utils.Errorf("zero weight for stream %v", n.id)
+		}
+	}
+	for _, ch := range n.child {
+		ch.dfs()
+	}
+}
+
+func (e *epicScheduling) buildTree() map[protocol.StreamID]*depNode {
+	ret := make(map[protocol.StreamID]*depNode)
+	getNode := func(id protocol.StreamID) *depNode {
+		var (
+			node *depNode
+			ok   bool
+		)
+		if node, ok = ret[id]; !ok {
+			node = &depNode{id: id}
+			ret[id] = node
+		}
+		return node
+	}
+
+	for sid, si := range e.streams {
+		// there cannot be error
+		s, _ := e.sess.streamsMap.GetOrOpenStream(sid)
+		if s == nil {
+			continue
+		}
+
+		cur := getNode(sid)
+		cur.weight = float64(s.weight)
+		if cur.weight <= 0 {
+			cur.weight = 1
+		}
+		cur.size = float64(si.bytes)
+		pa := getNode(s.parent)
+		pa.child = append(pa.child, cur)
+		pa.sumWeight += cur.weight
+	}
+	root := getNode(0)
+	root.dfs()
+	return ret
+}
+
 // Tiny: not thread safe
 func (e *epicScheduling) updateStreamQueue() {
-	// Tiny: we assume all priority are the same, so just sort by bytes
+	// tree := e.buildTree()
+
 	e.streamQueue = e.streamQueue[:0]
 	for sid := range e.streams {
 		e.streamQueue = append(e.streamQueue, sid)
