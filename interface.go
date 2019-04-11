@@ -62,7 +62,7 @@ type Stream interface {
 	GetBytesRetrans() (ByteCount, error)
 
 	// Only sets sending priority
-	SetPriority(parent StreamID, weight uint8)
+	SetPriority(parent StreamID, weight int)
 }
 
 // A Session is a QUIC connection between two peers.

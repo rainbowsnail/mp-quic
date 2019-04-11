@@ -444,7 +444,10 @@ func (s *stream) GetBytesRetrans() (protocol.ByteCount, error) {
 	return s.flowControlManager.GetBytesRetrans(s.streamID)
 }
 
-func (s *stream) SetPriority(parent StreamID, weight uint8) {
+func (s *stream) SetPriority(parent StreamID, weight int) {
 	s.parent = parent
-	s.weight = int(weight) + 1
+	s.weight = weight
+	if s.weight <= 0 {
+		s.weight = 1
+	}
 }
