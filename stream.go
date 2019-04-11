@@ -57,6 +57,9 @@ type stream struct {
 	writeDeadline  time.Time
 
 	flowControlManager flowcontrol.FlowControlManager
+
+	weight int
+	parent protocol.StreamID
 }
 
 var _ Stream = &stream{}
@@ -82,6 +85,7 @@ func newStream(StreamID protocol.StreamID,
 		frameQueue:         newStreamFrameSorter(),
 		readChan:           make(chan struct{}, 1),
 		writeChan:          make(chan struct{}, 1),
+		weight:             1,
 	}
 	s.ctx, s.ctxCancel = context.WithCancel(context.Background())
 	return s
@@ -438,4 +442,12 @@ func (s *stream) GetBytesSent() (protocol.ByteCount, error) {
 
 func (s *stream) GetBytesRetrans() (protocol.ByteCount, error) {
 	return s.flowControlManager.GetBytesRetrans(s.streamID)
+}
+
+func (s *stream) SetPriority(parent StreamID, weight uint8) {
+	s.parent = parent
+	s.weight = int(weight)
+	if s.weight <= 0 {
+		s.weight = 1
+	}
 }
