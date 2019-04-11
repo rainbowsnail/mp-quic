@@ -451,8 +451,5 @@ func (s *stream) GetBytesRetrans() (protocol.ByteCount, error) {
 
 func (s *stream) SetPriority(parent StreamID, weight uint8) {
 	s.parent = parent
-	s.weight = int(weight)
-	if s.weight <= 0 {
-		s.weight = 1
-	}
+	s.weight = int(weight) + 1
 }
