@@ -175,7 +175,7 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 
 	// Tiny: iterate streams until we fill the packet or we run out of streams
 	for _, sid := range streams {
-		s := f.streamsMap.streams[sid]
+		s, _ := f.streamsMap.GetOrOpenStream(sid)
 
 		// Tiny: now we wont delete streams from stream queue, so double check
 		if s == nil || s.streamID == 1 /* crypto stream is handled separately */ {
