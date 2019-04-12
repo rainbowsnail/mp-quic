@@ -19,7 +19,6 @@ type scheduler struct {
 	handler ScheduleHandler
 
 	lastAckDupTime 	time.Time
-	quotas 				map[protocol.PathID]uint
 	delay 				map[protocol.PathID]time.Duration
 	shouldSendDupAck	map[protocol.PathID]bool
 
