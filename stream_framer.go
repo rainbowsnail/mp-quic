@@ -20,6 +20,7 @@ type streamFramer struct {
 	addAddressFrameQueue []*wire.AddAddressFrame
 	closePathFrameQueue  []*wire.ClosePathFrame
 	pathsFrame           *wire.PathsFrame
+	ackReturnPathFrame	 *wire.ChangeAckPathFrame
 }
 
 func newStreamFramer(streamsMap *streamsMap, flowControlManager flowcontrol.FlowControlManager) *streamFramer {
@@ -61,6 +62,47 @@ func (f *streamFramer) PopAddAddressFrame() *wire.AddAddressFrame {
 	}
 	frame := f.addAddressFrameQueue[0]
 	f.addAddressFrameQueue = f.addAddressFrameQueue[1:]
+	return frame
+}
+
+func (f *streamFramer) AddAckReturnPathsFrame(s *session) {
+	/*
+	ackReturnPaths := make(map[protocol.PathID]protocol.PathID)
+
+	for pathID, p := range s.paths{
+		if p.updateAckPathID == true{
+			ackReturnPaths[pathID] = p.ackPathID
+		}
+	}
+	if len(ackReturnPaths) != 0 {
+
+		f.ackReturnPathFrame = &wire.ChangeAckPathFrame{
+			AckReturnPaths:	ackReturnPaths,
+		}
+	}
+	*/
+}
+
+func (f *streamFramer) PopAckReturnPathsFrame(s *session) *wire.ChangeAckPathFrame {
+	ackReturnPaths := make(map[protocol.PathID]protocol.PathID)
+
+	for pathID, p := range s.paths{
+		if p.updateAckPathID == true{
+			ackReturnPaths[pathID] = p.ackPathID
+			p.updateAckPathID = false
+		}
+	}
+	if len(ackReturnPaths) != 0 {
+
+		f.ackReturnPathFrame = &wire.ChangeAckPathFrame{
+			AckReturnPaths:	ackReturnPaths,
+		}
+	}
+	if f.ackReturnPathFrame == nil {
+		return nil
+	}
+	frame := f.ackReturnPathFrame
+	f.ackReturnPathFrame = nil
 	return frame
 }
 
