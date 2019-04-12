@@ -483,6 +483,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 			i++
 		}
 	}
+	sch.handler.RearrangeStreams()
 	windowUpdateFrames = s.getWindowUpdateFrames(false)
 	return sch.ackRemainingPaths(s, windowUpdateFrames)
 }

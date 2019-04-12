@@ -24,6 +24,8 @@ type ScheduleHandler interface {
 	ConsumePathBytes(protocol.PathID, protocol.StreamID, protocol.ByteCount)
 	// called when path availability changed
 	RefreshPath([]protocol.PathID)
+	// called manually
+	RearrangeStreams()
 }
 
 type streamInfo struct {
@@ -88,6 +90,8 @@ func (n *depNode) dfs() {
 		} else {
 			utils.Errorf("zero weight for stream %v", n.id)
 		}
+	} else {
+		n.prop = 1
 	}
 	for _, ch := range n.child {
 		ch.dfs()
@@ -240,6 +244,13 @@ func (e *epicScheduling) rearrangeStreams() {
 	}
 }
 
+func (e *epicScheduling) RearrangeStreams() {
+	e.Lock()
+	defer e.Unlock()
+
+	e.rearrangeStreams()
+}
+
 func (e *epicScheduling) AddStreamByte(streamID protocol.StreamID, bytes protocol.ByteCount) {
 	e.Lock()
 	defer e.Unlock()
@@ -302,8 +313,8 @@ func (e *epicScheduling) ConsumePathBytes(pathID protocol.PathID, streamID proto
 		if b, ok := s.alloc[pathID]; ok && s.bytes >= bytes && b >= bytes {
 			utils.Debugf("stream %v consume %v from path %v", streamID, bytes, pathID)
 			s.bytes -= bytes
-			// s.alloc[pathID] -= bytes
-			e.rearrangeStreams()
+			s.alloc[pathID] -= bytes
+			// e.rearrangeStreams()
 			return
 		}
 	}
