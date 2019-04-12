@@ -33,7 +33,7 @@ func (sch *scheduler) setup() {
 	now := time.Now()
 	sch.lastDupAckTime = now
 	sch.timer = utils.NewTimer()
-	//go sch.run()
+	go sch.run()
 }
 
 func (sch *scheduler) run() {
