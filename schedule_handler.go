@@ -102,12 +102,13 @@ func (e *epicScheduling) buildTree() map[protocol.StreamID]*depNode {
 			ok   bool
 		)
 		if node, ok = ret[id]; !ok {
-			node = &depNode{id: id}
+			node = &depNode{id: id, weight: 1}
 			ret[id] = node
 		}
 		return node
 	}
 
+	e.streamQueue = e.streamQueue[:0]
 	for sid, si := range e.streams {
 		// there cannot be error
 		s, _ := e.sess.streamsMap.GetOrOpenStream(sid)
@@ -115,6 +116,7 @@ func (e *epicScheduling) buildTree() map[protocol.StreamID]*depNode {
 			continue
 		}
 
+		e.streamQueue = append(e.streamQueue, sid)
 		cur := getNode(sid)
 		cur.weight = float64(s.weight)
 		if cur.weight <= 0 {
@@ -132,15 +134,11 @@ func (e *epicScheduling) buildTree() map[protocol.StreamID]*depNode {
 
 // Tiny: not thread safe
 func (e *epicScheduling) updateStreamQueue() {
-	// tree := e.buildTree()
+	tree := e.buildTree()
 
-	e.streamQueue = e.streamQueue[:0]
-	for sid := range e.streams {
-		e.streamQueue = append(e.streamQueue, sid)
-	}
 	sort.Slice(e.streamQueue, func(i, j int) bool {
 		ii, jj := e.streamQueue[i], e.streamQueue[j]
-		return e.streams[ii].bytes < e.streams[jj].bytes
+		return tree[ii].delay < tree[jj].delay
 	})
 }
 
