@@ -355,11 +355,10 @@ func (sch *scheduler) ackRemainingPaths(s *session, totalWindowUpdateFrames []*w
 }
 
 // Tiny: called when stream issue a write
-func (sch *scheduler) allocateStream(s *session, str *stream) {
-	bytes := str.lenOfDataForWriting()
-	// if bytes <= 0 {
-	// 	return
-	// }
+func (sch *scheduler) allocateStream(s *session, str *stream, bytes protocol.ByteCount) {
+	if bytes <= 0 && (!str.finishedWriting.Get() || str.finSent.Get()) {
+		return
+	}
 	// utils.Infof("stream %v write %v bytes", str.streamID, bytes)
 	sch.handler.AddStreamByte(str.streamID, bytes)
 }
@@ -393,6 +392,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 	pths := sch.selectPaths(s, hasRetransmission)
 	// Tiny: i'm confused with the logic of WUF frames and the purpose of ackRemainingPaths
 	//		 but still keep the logic
+	leastSent := false
 	for i := 0; i < len(pths); {
 		pth := pths[i]
 
@@ -445,7 +445,10 @@ func (sch *scheduler) sendPacket(s *session) error {
 				utils.Debugf("empty packet on %v, switch to next", pth.pathID)
 				// Tiny: empty packet, we switch to next path
 				i++
+			} else {
+				leastSent = true
 			}
+
 			// Tiny: we remove the duplicate sending for it cause serious bug
 			// } else if pth.rttStats.SmoothedRTT() == 0 {
 			// 	// Duplicate traffic when it was sent on an unknown performing path
@@ -483,7 +486,9 @@ func (sch *scheduler) sendPacket(s *session) error {
 			i++
 		}
 	}
-	sch.handler.RearrangeStreams()
+	if leastSent {
+		sch.handler.RearrangeStreams()
+	}
 	windowUpdateFrames = s.getWindowUpdateFrames(false)
 	return sch.ackRemainingPaths(s, windowUpdateFrames)
 }

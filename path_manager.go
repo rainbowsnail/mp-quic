@@ -62,7 +62,7 @@ func (pm *pathManager) setup(conn connection) {
 	pm.sess.paths[protocol.InitialPathID].setup(pm.oliaSenders)
 
 	// Tiny: notify path change
-	pm.sess.onPathChange()
+	pm.sess.onPathChange(true)
 
 	// With the initial path, get the remoteAddr to create paths accordingly
 	if conn.RemoteAddr() != nil {
@@ -196,7 +196,7 @@ func (pm *pathManager) createPaths() error {
 	}
 
 	// Tiny: notify path change
-	pm.sess.onPathChange()
+	pm.sess.onPathChange(true)
 
 	pm.sess.schedulePathsFrame()
 	return nil
@@ -237,7 +237,7 @@ func (pm *pathManager) createPathFromRemote(p *receivedPacket) (*path, error) {
 	}
 
 	// Tiny: notify path change
-	pm.sess.onPathChange()
+	pm.sess.onPathChange(true)
 
 	return pth, nil
 }
