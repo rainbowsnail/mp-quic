@@ -171,14 +171,22 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 	var currentLen protocol.ByteCount
 
 	handler := pth.sess.scheduler.handler
-	streams := handler.GetStreamQueue()
+	streams := handler.GetActiveStream()
 
 	// Tiny: iterate streams until we fill the packet or we run out of streams
-	for _, sid := range streams {
+	for sid, streamInfo := range streams {
 		s, _ := f.streamsMap.GetOrOpenStream(sid)
 
 		// Tiny: now we wont delete streams from stream queue, so double check
 		if s == nil || s.streamID == 1 /* crypto stream is handled separately */ {
+			continue
+		}
+
+		// Jing: send packets having opportunity and on this path
+		if streamInfo.pathID != pth.pathID || streamInfo.waiting == 1{
+			continue
+		}
+		if handler.streamOpportunity[sid] == 0{
 			continue
 		}
 
@@ -235,10 +243,16 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 			// Tiny: its from original quic-go
 			f.flowControlManager.AddBytesSent(s.streamID, dataLen)
 			utils.Debugf("path %v consume %v bytes on stream %v", pth.pathID, dataLen, sid)
-			// Tiny: although it works even if dataLen == 0, we still checks
+			
+			// Jing: update opportunity
 			if dataLen > 0 {
-				handler.ConsumePathBytes(pth.pathID, sid, dataLen)
+				handler.UpdateOpportunity(sid, dataLen)
 			}
+
+			// Tiny: although it works even if dataLen == 0, we still checks
+			//if dataLen > 0 {
+			//	handler.ConsumePathBytes(pth.pathID, sid, dataLen)
+			//}
 
 			// Tiny: it must breaks the loop next time when FC blocks
 			// Finally, check if we are now FC blocked and should queue a BLOCKED frame
