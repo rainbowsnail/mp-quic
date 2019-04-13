@@ -100,7 +100,7 @@ func (e *epicScheduling) setup() {
 	e.activeNodes = make([]*depNode, 0)
 	e.streamOpportunity = make(map[protocol.StreamID]uint)
 	e.streams = make(map[protocol.StreamID]*streamInfo)
-	e.sumRemainOpportunity = int(0)
+	e.sumRemainOpportunity = uint(0)
 }
 func (e *epicScheduling) Check(sid protocol.StreamID, pathID protocol.PathID) bool{
 	if e.streams[sid].pathID != pathID || e.streams[sid].waiting == 1 {
@@ -438,7 +438,7 @@ func (e *epicScheduling) UpdateOpportunity(streamID protocol.StreamID, bytes pro
 	if _, ok := e.streamOpportunity[streamID]; ok {
 		if e.streamOpportunity[streamID] > 0 && e.sumRemainOpportunity > 0{
 			e.streamOpportunity[streamID] -= 1
-			sumRemainOpportunity -= 1
+			e.sumRemainOpportunity -= 1
 		}else{
 			utils.Errorf("streamOpportunity for stream %v equals zero", streamID)
 		}
