@@ -84,6 +84,7 @@ type epicScheduling struct {
 	activeNodes []*depNode
 	streamOpportunity map[protocol.StreamID]uint
 	streamQueue []protocol.StreamID
+	sumRemainOpportunity uint
 }
 
 // NewEpicScheduling creates an epic scheduling handler
@@ -99,6 +100,7 @@ func (e *epicScheduling) setup() {
 	e.activeNodes = make([]*depNode, 0)
 	e.streamOpportunity = make(map[protocol.StreamID]uint)
 	e.streams = make(map[protocol.StreamID]*streamInfo)
+	e.sumRemainOpportunity = int(0)
 }
 func (e *epicScheduling) Check(sid protocol.StreamID, pathID protocol.PathID) bool{
 	if e.streams[sid].pathID != pathID || e.streams[sid].waiting == 1 {
@@ -244,7 +246,7 @@ func (e *epicScheduling) updateOpportunity(n *depNode) error{
 // Tiny: not thread safe
 func (e *epicScheduling) updateStreamQueue() {
 	tree := e.buildTree()
-	if len(e.streamOpportunity) == 0{
+	if e.sumRemainOpportunity == 0{
 		e.updateOpportunity(tree[0])
 	}
 	
@@ -434,8 +436,9 @@ func (e *epicScheduling) UpdateOpportunity(streamID protocol.StreamID, bytes pro
 	e.Lock()
 	defer e.Unlock()
 	if _, ok := e.streamOpportunity[streamID]; ok {
-		if e.streamOpportunity[streamID] > 0{
+		if e.streamOpportunity[streamID] > 0 && e.sumRemainOpportunity > 0{
 			e.streamOpportunity[streamID] -= 1
+			sumRemainOpportunity -= 1
 		}else{
 			utils.Errorf("streamOpportunity for stream %v equals zero", streamID)
 		}
