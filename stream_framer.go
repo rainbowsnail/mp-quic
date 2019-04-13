@@ -186,7 +186,8 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 		if streamInfo.pathID != pth.pathID || streamInfo.waiting == 1{
 			continue
 		}
-		if handler.streamOpportunity[sid] == 0{
+		streamOpportunity = handler.GetStreamOpportunity()
+		if streamOpportunity[sid] == 0 {
 			continue
 		}
 

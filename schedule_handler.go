@@ -26,6 +26,9 @@ type ScheduleHandler interface {
 	GetStreamQueue() []protocol.StreamID
 	// Jing: return next stream to send
 	UpdateOpportunity(streamID protocol.StreamID, bytes protocol.ByteCount) 
+	// Jing: send date on active streams
+	GetActiveStream() *map[protocol.StreamID]uint
+	GetStreamOpportunity() map[protocol.StreamID]uint
 	// returns stream limit of path
 	GetPathStreamLimit(protocol.PathID, protocol.StreamID) protocol.ByteCount
 	// called to consume bytes
@@ -400,6 +403,10 @@ func (e *epicScheduling) GetActiveStream() *map[protocol.StreamID]uint {
 	//ret := make([]protocol.StreamID, len(e.streamQueue))
 	// copy(ret, e.streamOpportunity)
 	return &e.streamOpportunity
+}
+
+fun (e *epicScheduling) GetStreamOpportunity() map[protocol.StreamID]uint {
+	return e.GetActiveStream()
 }
 
 func (e *epicScheduling) GetPathStreamLimit(pid protocol.PathID, sid protocol.StreamID) protocol.ByteCount {
