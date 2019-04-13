@@ -228,7 +228,7 @@ func (sch *scheduler) selectPathFastest(s *session) (*path, *path) {
 	var lowerRTT time.Duration
 	var currentRTT time.Duration
 	var lastPath *path
-	selectedPathID := protocol.PathID(255)
+	//selectedPathID := protocol.PathID(255)
 
 pathLoop:
 	for pathID, pth := range s.paths {
@@ -281,7 +281,7 @@ pathLoop:
 			lastPath = selectedPath
 		}
 		selectedPath = pth
-		selectedPathID = pathID
+		//selectedPathID = pathID
 	}
 
 	return selectedPath, lastPath

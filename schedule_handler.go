@@ -28,7 +28,8 @@ type ScheduleHandler interface {
 	UpdateOpportunity(streamID protocol.StreamID, bytes protocol.ByteCount) 
 	// Jing: send date on active streams
 	GetActiveStream() *map[protocol.StreamID]uint
-	GetStreamOpportunity() map[protocol.StreamID]uint
+	GetStreamOpportunity() *map[protocol.StreamID]uint
+	Check(sid protocol.StreamID, pathID protocol.PathID) bool
 	// returns stream limit of path
 	GetPathStreamLimit(protocol.PathID, protocol.StreamID) protocol.ByteCount
 	// called to consume bytes
@@ -99,7 +100,12 @@ func (e *epicScheduling) setup() {
 	e.streamOpportunity = make(map[protocol.StreamID]uint)
 	e.streams = make(map[protocol.StreamID]*streamInfo)
 }
-
+func (e *epicScheduling) Check(sid protocol.StreamID, pathID protocol.PathID) bool{
+	if e.streams[sid].pathID != pathID || e.streams[sid].waiting == 1 {
+		return false
+	}
+	return true
+}
 func (n *depNode) dfs() {
 	if n.parent != nil {
 		if n.weight > 0 {
@@ -158,7 +164,8 @@ func (e *epicScheduling) buildTree() map[protocol.StreamID]*depNode {
 func (e *epicScheduling) getActiveNodes(n *depNode) float64{
 	sumWeight := float64(0)
 	if n.size > 0 {
-		append(e.activeNodes,n)
+		e.activeNodes = append(e.activeNodes,n)
+		//e.activeNodes.append(n)
 		return n.weight
 	}
 	for _, ch := range n.child {
@@ -399,13 +406,13 @@ func (e *epicScheduling) GetStreamQueue() []protocol.StreamID {
 func (e *epicScheduling) GetActiveStream() *map[protocol.StreamID]uint {
 	e.RLock()
 	defer e.RUnlock()
-	ret := make(map[protocol.StreamID]uint)
+	//ret := make(map[protocol.StreamID]uint)
 	//ret := make([]protocol.StreamID, len(e.streamQueue))
 	// copy(ret, e.streamOpportunity)
 	return &e.streamOpportunity
 }
 
-fun (e *epicScheduling) GetStreamOpportunity() map[protocol.StreamID]uint {
+func (e *epicScheduling) GetStreamOpportunity() *map[protocol.StreamID]uint {
 	return e.GetActiveStream()
 }
 
@@ -426,7 +433,7 @@ func (e *epicScheduling) GetPathStreamLimit(pid protocol.PathID, sid protocol.St
 func (e *epicScheduling) UpdateOpportunity(streamID protocol.StreamID, bytes protocol.ByteCount) {
 	e.Lock()
 	defer e.Unlock()
-	if s, ok := e.streamOpportunity[streamID]; ok {
+	if _, ok := e.streamOpportunity[streamID]; ok {
 		if e.streamOpportunity[streamID] > 0{
 			e.streamOpportunity[streamID] -= 1
 		}else{

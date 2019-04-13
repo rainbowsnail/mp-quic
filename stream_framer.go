@@ -171,10 +171,10 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 	var currentLen protocol.ByteCount
 
 	handler := pth.sess.scheduler.handler
-	streams := handler.GetActiveStream()
+	streams := *handler.GetActiveStream()
 
 	// Tiny: iterate streams until we fill the packet or we run out of streams
-	for sid, streamInfo := range streams {
+	for sid, _ := range streams {
 		s, _ := f.streamsMap.GetOrOpenStream(sid)
 
 		// Tiny: now we wont delete streams from stream queue, so double check
@@ -183,10 +183,11 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 		}
 
 		// Jing: send packets having opportunity and on this path
-		if streamInfo.pathID != pth.pathID || streamInfo.waiting == 1{
+		//if streamInfo.pathID != pth.pathID || streamInfo.waiting == 1{
+		if handler.Check(sid, pth.pathID){
 			continue
 		}
-		streamOpportunity = handler.GetStreamOpportunity()
+		streamOpportunity := *handler.GetStreamOpportunity()
 		if streamOpportunity[sid] == 0 {
 			continue
 		}
