@@ -214,18 +214,20 @@ pathLoop:
 	return selectedPath
 }
 
-func (sch *scheduler) selectPathFastest(s *session) *path {
+func (sch *scheduler) selectPathFastest(s *session) (*path, *path) {
 	// XXX Avoid using PathID 0 if there is more than 1 path
 	if len(s.paths) <= 1 {
 		if !s.paths[protocol.InitialPathID].SendingAllowed() {
-			return nil
+			return nil,nil
 		}
-		return s.paths[protocol.InitialPathID]
+		rtn := s.paths[protocol.InitialPathID]
+		return rtn, rtn
 	}
 
 	var selectedPath *path
 	var lowerRTT time.Duration
 	var currentRTT time.Duration
+	var lastPath *path
 	selectedPathID := protocol.PathID(255)
 
 pathLoop:
@@ -267,16 +269,22 @@ pathLoop:
 		// }
 
 		if currentRTT != 0 && lowerRTT != 0 && selectedPath != nil && currentRTT >= lowerRTT {
+			if currentRTT >= lowerRTT{
+				lastPath = pth
+			}
 			continue pathLoop
 		}
 
 		// Update
 		lowerRTT = currentRTT
+		if selectedPath != nil {
+			lastPath = selectedPath
+		}
 		selectedPath = pth
 		selectedPathID = pathID
 	}
 
-	return selectedPath
+	return selectedPath, lastPath
 }
 
 
@@ -292,6 +300,10 @@ func (sch *scheduler) selectPath(s *session, hasRetransmission bool, hasStreamRe
 // Tiny: helper function to decide if a path is available
 func pathAvailable(pth *path, hasRetransmission bool) bool {
 	return pth != nil && pth.open.Get() && (hasRetransmission || pth.SendingAllowed())
+}
+
+func (sch *scheduler) PathAvailable(pth *path) bool {
+	return pth != nil && pth.open.Get() && pth.SendingAllowed()
 }
 
 // Tiny: filter & sort paths, locks
@@ -540,4 +552,5 @@ func (sch *scheduler) sendPacket(s *session) error {
 	sch.handler.RearrangeStreams()
 	windowUpdateFrames = s.getWindowUpdateFrames(false)
 	
+	return nil
 }

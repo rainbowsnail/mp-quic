@@ -25,7 +25,7 @@ type ScheduleHandler interface {
 	// returns the stream queue
 	GetStreamQueue() []protocol.StreamID
 	// Jing: return next stream to send
-	GetNextStream() protocol.StreamID
+	UpdateOpportunity(streamID protocol.StreamID, bytes protocol.ByteCount) 
 	// returns stream limit of path
 	GetPathStreamLimit(protocol.PathID, protocol.StreamID) protocol.ByteCount
 	// called to consume bytes
@@ -41,7 +41,7 @@ type streamInfo struct {
 	pathID protocol.PathID
 	oppotunity uint
 	waiting uint
-	//alloc map[protocol.PathID]protocol.ByteCount
+	alloc map[protocol.PathID]protocol.ByteCount
 }
 
 type pathInfo struct {
@@ -78,7 +78,7 @@ type epicScheduling struct {
 	paths       []protocol.PathID
 	streams     map[protocol.StreamID]*streamInfo
 	activeNodes []*depNode
-	streamOpportunity map[protocol.StreamID]*streamInfo
+	streamOpportunity map[protocol.StreamID]uint
 	streamQueue []protocol.StreamID
 }
 
@@ -92,7 +92,8 @@ func NewEpicScheduling(sess *session) ScheduleHandler {
 func (e *epicScheduling) setup() {
 	e.paths = make([]protocol.PathID, 0)
 	e.streamQueue = make([]protocol.StreamID, 0)
-	e.streamOpportunity = make([]protocol.StreamID, 0)
+	e.activeNodes = make([]*depNode, 0)
+	e.streamOpportunity = make(map[protocol.StreamID]uint)
 	e.streams = make(map[protocol.StreamID]*streamInfo)
 }
 
@@ -154,44 +155,45 @@ func (e *epicScheduling) buildTree() map[protocol.StreamID]*depNode {
 func (e *epicScheduling) getActiveNodes(n *depNode) float64{
 	sumWeight := float64(0)
 	if n.size > 0 {
-		activeNodes.append(&n)
+		append(e.activeNodes,n)
 		return n.weight
 	}
 	for _, ch := range n.child {
-		sumWeight += updateOpportunity()
+		sumWeight += e.getActiveNodes(ch)
 	}
 	return sumWeight
 }
 
 // Jing: select path for a stream
 func (e *epicScheduling) streamSelectPath(streamID protocol.StreamID, weight float64, sumWeight float64) error{
-	pathFast, pathSlow :=  e.sess.scheduler.selectPathFastest(e.sess)
+	pathFast,pathSlow :=  e.sess.scheduler.selectPathFastest(e.sess)
+	//pathSlow := e.sess.scheduler.selecrPathFastAvailable(e.sess)
 	s, ok := e.streams[streamID]
 	if !ok {
 		utils.Debugf("stream %v not exists", streamID)
 	}
 
 	// Jing: TODO: if fast path is available 
-	fastAvailable = e.sess.scheduler.pathAvailable(pathFast)
+	fastAvailable := e.sess.scheduler.PathAvailable(pathFast)
 	if fastAvailable {
 		s.pathID = pathSlow.pathID
 	}
 	// Jing: TODO: otherwise
-	rttFast := pathFast.rttStats.SmoothedRTT()
-	rttSlow := pathFast.rttStats.SmoothedRTT()
-	sigmaFast := pathFast.rttStats.MeanDeviation()
-	sigmaSlow := pathFast.rttStats.MeanDeviation()
+	rttFast := float64(pathFast.rttStats.SmoothedRTT())
+	rttSlow := float64(pathFast.rttStats.SmoothedRTT())
+	sigmaFast := float64(pathFast.rttStats.MeanDeviation())
+	sigmaSlow := float64(pathFast.rttStats.MeanDeviation())
 
-	k := e.bytesUntilCompletion(streamID, weight, sumWeight)
+	k := float64(e.bytesUntilCompletion(streamID, weight, sumWeight))
 	// Jing: n = 1+ k/cwnd_f
-	cwndFast = pathFast.sentPacketHandler.GetBandwidthEstimate() / 8
-	cwndSlow = pathSlow.sentPacketHandler.GetBandwidthEstimate() / 8
-	n := 1 + k / cwndFast
+	cwndFast := float64(pathFast.sentPacketHandler.GetBandwidthEstimate() / 8)
+	cwndSlow := float64(pathSlow.sentPacketHandler.GetBandwidthEstimate() / 8)
+	n := float64(1 + uint(k)) / float64(cwndFast)
 	beta := float64(0.8)
-	delta := math.max(sigmaFast, sigmaSlow)
+	delta := math.Max(sigmaFast, sigmaSlow)
 
 	
-	if (n * rttFast) < (1 + s.waiting * beta) * (rttSlow + delta) {
+	if (n * rttFast) < (1 + float64(s.waiting) * beta) * (rttSlow + delta) {
 		if k / cwndSlow * rttSlow >= 2 * rttFast + delta {
 			s.waiting = 1
 		} else {
@@ -201,25 +203,26 @@ func (e *epicScheduling) streamSelectPath(streamID protocol.StreamID, weight flo
 		s.waiting = 0
 		s.pathID = pathSlow.pathID
 	}
+	return nil
 }
 
 func (e *epicScheduling) bytesUntilCompletion(streamID protocol.StreamID, weight float64, sumWeight float64) protocol.ByteCount {
-	leftBytes := e.streamInfo[streamID].bytes
-	left := leftBytes / bytesOpportunity
+	leftBytes := uint(e.streams[streamID].bytes)
+	left := float64(leftBytes) / float64(bytesOpportunity)
 	if leftBytes < lowestQuantum {
-		return leftBytes
+		return protocol.ByteCount(leftBytes)
 	}
 	nomarlizedWeight := weight / sumWeight
 	g := (1 - nomarlizedWeight) / nomarlizedWeight
-	k := bytesOpportunity * ( g * (left - 1) + left )
-	return k
+	k := float64(bytesOpportunity) * ( g * (left - 1) + left )
+	return protocol.ByteCount(k)
 } 
 
 func (e *epicScheduling) updateOpportunity(n *depNode) error{
-	sumWeight = e.getActiveNodes(&n)
-	e.streamOpportunity = make([]protocol.StreamID, 0)
+	sumWeight := e.getActiveNodes(n)
+	e.streamOpportunity = make(map[protocol.StreamID]uint)
 	for _, n := range e.activeNodes {
-		e.streamOpportunity[n.id] = n.weight * maxOpportunity/sumWeight
+		e.streamOpportunity[n.id] = uint(n.weight * float64(maxOpportunity)/sumWeight)
 		e.streamSelectPath(n.id, n.weight, sumWeight)
 		//if e.streamInfo[n.id].pathID == 255{
 			//e.streamSelectPath(n.id, n.weight, sumWeight)
@@ -232,7 +235,7 @@ func (e *epicScheduling) updateOpportunity(n *depNode) error{
 func (e *epicScheduling) updateStreamQueue() {
 	tree := e.buildTree()
 	if len(e.streamOpportunity) == 0{
-		e.updateOpportunity(tree)
+		e.updateOpportunity(tree[0])
 	}
 	
 	//sort.Slice(e.streamQueue, func(i, j int) bool {
@@ -390,13 +393,13 @@ func (e *epicScheduling) GetStreamQueue() []protocol.StreamID {
 }
 
 // Jing: TODO: 
-func (e *epicScheduling) GetActiveStream() []protocol.StreamID {
+func (e *epicScheduling) GetActiveStream() *map[protocol.StreamID]uint {
 	e.RLock()
 	defer e.RUnlock()
-	ret := make(map[protocol.StreamID]*streamInfo)
+	ret := make(map[protocol.StreamID]uint)
 	//ret := make([]protocol.StreamID, len(e.streamQueue))
-	copy(ret, e.streamOpportunity)
-	return ret
+	// copy(ret, e.streamOpportunity)
+	return &e.streamOpportunity
 }
 
 func (e *epicScheduling) GetPathStreamLimit(pid protocol.PathID, sid protocol.StreamID) protocol.ByteCount {
