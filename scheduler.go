@@ -293,6 +293,7 @@ pathLoop:
 func (sch *scheduler) selectPath(s *session, hasRetransmission bool, hasStreamRetransmission bool, fromPth *path) *path {
 	// XXX Currently round-robin
 	// TODO select the right scheduler dynamically
+	utils.Infof("selectPath")
 	 return sch.selectPathLowLatency(s, hasRetransmission, hasStreamRetransmission, fromPth)
 	//return sch.selectPathRoundRobin(s, hasRetransmission, hasStreamRetransmission, fromPth)
 }
@@ -471,6 +472,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 		// Tiny: i'm confused with the logic of WUF frames and the purpose of ackRemainingPaths
 		//		 but still keep the logic
 		pth := sch.selectPath(s, hasRetransmission, hasStreamRetransmission, fromPth)
+		utils.Infof("pth id=%v", pth.pathID)
 		
 		// If we have an handshake packet retransmission, do it directly
 		if hasRetransmission && retransmitHandshakePacket != nil {

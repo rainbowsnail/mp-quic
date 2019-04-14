@@ -34,6 +34,7 @@ func (f *streamFramer) AddFrameForRetransmission(frame *wire.StreamFrame) {
 }
 
 func (f *streamFramer) PopStreamFrames(maxLen protocol.ByteCount, pth *path) []*wire.StreamFrame {
+	utils.Infof("popstreamFrame")
 	fs, currentLen := f.maybePopFramesForRetransmission(maxLen)
 	// Tiny: if path CC we should only consider retransmission
 	if pth.SendingAllowed() {
@@ -167,14 +168,16 @@ func (f *streamFramer) maybePopFramesForRetransmission(maxLen protocol.ByteCount
 }
 
 func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *path) (res []*wire.StreamFrame) {
+	utils.Infof("maybePopNormalFrames")
 	frame := &wire.StreamFrame{DataLenPresent: true}
 	var currentLen protocol.ByteCount
 
 	handler := pth.sess.scheduler.handler
-	streams := *handler.GetActiveStream()
+	streams := handler.GetActiveStream()
 
 	// Tiny: iterate streams until we fill the packet or we run out of streams
-	for sid, _ := range streams {
+	for sid, _ := range *streams {
+		utils.Infof("sid = %v", sid)
 		s, _ := f.streamsMap.GetOrOpenStream(sid)
 
 		// Tiny: now we wont delete streams from stream queue, so double check
@@ -184,11 +187,12 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 
 		// Jing: send packets having opportunity and on this path
 		//if streamInfo.pathID != pth.pathID || streamInfo.waiting == 1{
-		if handler.Check(sid, pth.pathID){
+		if !handler.Check(sid, pth.pathID){
 			continue
 		}
 		streamOpportunity := *handler.GetStreamOpportunity()
 		if streamOpportunity[sid] == 0 {
+			utils.Infof("opportunity == 0")
 			continue
 		}
 
@@ -202,6 +206,7 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 				return // theoretically, we could find another stream that fits, but this is quite unlikely, so we stop here
 			}
 			maxLen := maxBytes - currentLen - frameHeaderBytes
+			utils.Infof("maxLen =%v", maxLen)
 
 			var sendWindowSize protocol.ByteCount
 			lenStreamData := s.lenOfDataForWriting()
@@ -211,9 +216,9 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 				maxLen = utils.MinByteCount(maxLen, sendWindowSize)
 
 				// Tiny: apply path limit
-				pathLimit := handler.GetPathStreamLimit(pth.pathID, sid)
-				utils.Debugf("path %v stream %v limit %v", pth.pathID, sid, pathLimit)
-				maxLen = utils.MinByteCount(maxLen, pathLimit)
+				// pathLimit := handler.GetPathStreamLimit(pth.pathID, sid)
+				// utils.Debugf("path %v stream %v limit %v", pth.pathID, sid, pathLimit)
+				// maxLen = utils.MinByteCount(maxLen, pathLimit)
 			}
 
 			// Tiny: either FC blocks, or we run out of path limit
