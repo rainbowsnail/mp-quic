@@ -194,13 +194,7 @@ func (e *epicScheduling) updateStreamQueue() {
 		e.streamQueue = append(e.streamQueue, sid)
 	}
 
-	sort.Slice(e.streamQueue, func(i, j int) bool {
-		ii, jj := e.streamQueue[i], e.streamQueue[j]
-		if ii < 11 || jj < 11 {
-			return ii < jj
-		}
-		return e.streams[ii].quota < e.streams[jj].quota
-	})
+	e.sortQueue()
 }
 
 // func (e *epicScheduling) updatePath() {
@@ -227,6 +221,16 @@ func (e *epicScheduling) updateStreamQueue() {
 // 	}
 // 	return true
 // }
+
+func (e *epicScheduling) sortQueue() {
+	sort.Slice(e.streamQueue, func(i, j int) bool {
+		ii, jj := e.streamQueue[i], e.streamQueue[j]
+		if ii < 11 || jj < 11 {
+			return ii < jj
+		}
+		return e.streams[ii].quota < e.streams[jj].quota
+	})
+}
 
 // Tiny: not thread safe
 func (e *epicScheduling) rearrangeStreams() {
@@ -399,9 +403,12 @@ func (e *epicScheduling) ConsumePathBytes(pathID protocol.PathID, streamID proto
 	defer e.Unlock()
 	if s, ok := e.streams[streamID]; ok && s.bytes >= bytes {
 		// if b, ok := s.alloc[pathID]; ok && s.bytes >= bytes && b >= bytes {
-		utils.Infof("stream %v consume %v from path %v", streamID, bytes, pathID)
-		s.bytes -= bytes
-		s.quota += float64(bytes)
+		if bytes > 0 {
+			utils.Infof("stream %v consume %v from path %v", streamID, bytes, pathID)
+			s.bytes -= bytes
+			s.quota += float64(bytes)
+			e.sortQueue()
+		}
 		// s.alloc[pathID] -= bytes
 		// e.rearrangeStreams()
 		return
