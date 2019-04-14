@@ -40,6 +40,7 @@ type streamInfo struct {
 	quota   float64
 	alloc   protocol.PathID
 	alloced bool
+	waiting int
 	// alloc  map[protocol.PathID]protocol.ByteCount
 }
 
@@ -520,8 +521,8 @@ func (e *epicScheduling) streamSelectPath(streamID protocol.StreamID, weight flo
 		return nil
 	}
 	// Jing: TODO: otherwise
-	rttFast := pathFast.rtt
-	rttSlow := pathSlow.rtt
+	rttFast := float64(pathFast.rtt)
+	rttSlow := float64(pathSlow.rtt)
 	sigmaFast := float64(pathFast.path.rttStats.MeanDeviation())
 	sigmaSlow := float64(pathSlow.path.rttStats.MeanDeviation())
 	utils.Infof("rttSlow=%v, rttFast=%v", rttSlow, rttFast)
@@ -539,12 +540,12 @@ func (e *epicScheduling) streamSelectPath(streamID protocol.StreamID, weight flo
 			s.waiting = 1
 			utils.Infof("waiting = 1")
 		} else {
-			s.pathID = pathSlow.pathID
+			allocatePath(s, pathSlow)
 			utils.Infof("send on slowpath")
 		}
 	} else {
 		s.waiting = 0
-		s.pathID = pathSlow.pathID
+		allocatePath(s, pathSlow)
 		utils.Infof("send on slowpath")
 	}
 	return nil
