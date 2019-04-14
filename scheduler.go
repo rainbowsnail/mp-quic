@@ -1,6 +1,7 @@
 package quic
 
 import (
+	"sort"
 	"time"
 
 	"github.com/lucas-clemente/quic-go/ackhandler"
@@ -250,6 +251,21 @@ func (sch *scheduler) selectPaths(s *session, hasRetransmission bool) []*path {
 	}
 
 	// Tiny: TODO we dont know how to sort now
+	sort.Slice(ret, func(i, j int) bool {
+		ii, jj := ret[i], ret[j]
+		ri, rj := ii.rttStats.SmoothedRTT(), jj.rttStats.SmoothedRTT()
+		if ri == 0 && rj == 0 {
+			return sch.quotas[ii.pathID] < sch.quotas[jj.pathID]
+		}
+		if ri == 0 || rj == 0 {
+			return ri > rj
+		}
+		return ri < rj
+	})
+
+	for _, pth := range ret {
+		utils.Infof("select path %v", pth.pathID)
+	}
 
 	return ret
 }
