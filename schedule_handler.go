@@ -5,7 +5,7 @@ import (
 	"github.com/lucas-clemente/quic-go/internal/utils"
 
 	"math"
-	// "runtime/debug"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -257,6 +257,7 @@ func (e *epicScheduling) sortQueue() {
 // Tiny: not thread safe
 func (e *epicScheduling) rearrangeStreams() {
 	utils.Infof("rearrange")
+	debug.PrintStack()
 	e.updateStreamQueue()
 }
 

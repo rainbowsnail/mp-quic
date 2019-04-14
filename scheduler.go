@@ -409,7 +409,8 @@ func (sch *scheduler) sendPacket(s *session) error {
 	pths := sch.selectPaths(s, hasRetransmission)
 	// Tiny: i'm confused with the logic of WUF frames and the purpose of ackRemainingPaths
 	//		 but still keep the logic
-	leastWait := false
+	// leastWait := false
+
 	for i := 0; i < len(pths); {
 		pth := pths[i]
 
@@ -461,7 +462,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 			if !sent {
 				utils.Debugf("empty packet on %v, switch to next", pth.pathID)
 				// Tiny: empty packet, we switch to next path
-				leastWait = true
+				// leastSent = true
 				i++
 			}
 			// } else {
@@ -505,9 +506,9 @@ func (sch *scheduler) sendPacket(s *session) error {
 			i++
 		}
 	}
-	if leastWait {
-		sch.handler.RearrangeStreams()
-	}
+	// if leastWait {
+	// sch.handler.RearrangeStreams()
+	// }
 	windowUpdateFrames = s.getWindowUpdateFrames(false)
 	return sch.ackRemainingPaths(s, windowUpdateFrames)
 }
