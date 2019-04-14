@@ -203,9 +203,9 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 				maxLen = utils.MinByteCount(maxLen, sendWindowSize)
 
 				// Tiny: apply path limit
-				// pathLimit := handler.GetPathStreamLimit(pth.pathID, sid)
-				// utils.Infof("path %v stream %v limit %v", pth.pathID, sid, pathLimit)
-				// maxLen = utils.MinByteCount(maxLen, pathLimit)
+				pathLimit := handler.GetPathStreamLimit(pth.pathID, sid)
+				utils.Infof("path %v stream %v limit %v", pth.pathID, sid, pathLimit)
+				maxLen = utils.MinByteCount(maxLen, pathLimit)
 			}
 
 			// Tiny: either FC blocks, or we run out of path limit
