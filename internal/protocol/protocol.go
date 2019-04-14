@@ -50,10 +50,10 @@ const MaxReceivePacketSize ByteCount = 1452
 const DefaultTCPMSS ByteCount = 1460
 
 // InitialStreamFlowControlWindow is the initial stream-level flow control window for sending
-const InitialStreamFlowControlWindow ByteCount = (1 << 14) // 16 kB
+const InitialStreamFlowControlWindow ByteCount = (1 << 20) // 16 kB
 
 // InitialConnectionFlowControlWindow is the initial connection-level flow control window for sending
-const InitialConnectionFlowControlWindow ByteCount = (1 << 14) // 16 kB
+const InitialConnectionFlowControlWindow ByteCount = 1.5 * (1 << 20) // 16 kB
 
 // ClientHelloMinimumSize is the minimum size the server expects an inchoate CHLO to have.
 const ClientHelloMinimumSize = 1024

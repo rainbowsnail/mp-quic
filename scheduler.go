@@ -243,6 +243,7 @@ func (sch *scheduler) selectPaths(s *session, hasRetransmission bool) []*path {
 	var ret []*path
 	for pid, pth := range s.paths {
 		if pid == protocol.InitialPathID || !pathAvailable(pth, hasRetransmission) {
+			utils.Infof("not available %v", pid)
 			continue
 		}
 		ret = append(ret, pth)
