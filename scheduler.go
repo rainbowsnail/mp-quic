@@ -1,6 +1,7 @@
 package quic
 
 import (
+	"sort"
 	"time"
 
 	"github.com/lucas-clemente/quic-go/ackhandler"
@@ -250,6 +251,21 @@ func (sch *scheduler) selectPaths(s *session, hasRetransmission bool) []*path {
 	}
 
 	// Tiny: TODO we dont know how to sort now
+	sort.Slice(ret, func(i, j int) bool {
+		ii, jj := ret[i], ret[j]
+		ri, rj := ii.rttStats.SmoothedRTT(), jj.rttStats.SmoothedRTT()
+		if ri == 0 && rj == 0 {
+			return sch.quotas[ii.pathID] < sch.quotas[jj.pathID]
+		}
+		if ri == 0 || rj == 0 {
+			return ri > rj
+		}
+		return ri < rj
+	})
+
+	for _, pth := range ret {
+		utils.Infof("select path %v", pth.pathID)
+	}
 
 	return ret
 }
@@ -393,7 +409,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 	pths := sch.selectPaths(s, hasRetransmission)
 	// Tiny: i'm confused with the logic of WUF frames and the purpose of ackRemainingPaths
 	//		 but still keep the logic
-	leastSent := false
+	// leastSent := false
 	for i := 0; i < len(pths); {
 		pth := pths[i]
 
@@ -446,9 +462,10 @@ func (sch *scheduler) sendPacket(s *session) error {
 				utils.Debugf("empty packet on %v, switch to next", pth.pathID)
 				// Tiny: empty packet, we switch to next path
 				i++
-			} else {
-				leastSent = true
 			}
+			// } else {
+			// 	leastSent = true
+			// }
 
 			// Tiny: we remove the duplicate sending for it cause serious bug
 			// } else if pth.rttStats.SmoothedRTT() == 0 {
@@ -487,9 +504,9 @@ func (sch *scheduler) sendPacket(s *session) error {
 			i++
 		}
 	}
-	if leastSent {
-		sch.handler.RearrangeStreams()
-	}
+	// if leastSent {
+	// 	sch.handler.RearrangeStreams()
+	// }
 	windowUpdateFrames = s.getWindowUpdateFrames(false)
 	return sch.ackRemainingPaths(s, windowUpdateFrames)
 }

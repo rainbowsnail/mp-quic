@@ -171,21 +171,21 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 	var currentLen protocol.ByteCount
 
 	handler := pth.sess.scheduler.handler
-	streams := handler.GetStreamQueue()
 
-	utils.Infof("streams %v", streams)
+	for {
+		streams := handler.GetStreamQueue()
+		utils.Infof("streams %v", streams)
 
-	// Tiny: iterate streams until we fill the packet or we run out of streams
-	for _, sid := range streams {
-		s, _ := f.streamsMap.GetOrOpenStream(sid)
+		sent := false
+		for _, sid := range streams {
+			s, _ := f.streamsMap.GetOrOpenStream(sid)
 
-		// Tiny: now we wont delete streams from stream queue, so double check
-		if s == nil || s.streamID == 1 /* crypto stream is handled separately */ {
-			continue
-		}
+			// Tiny: now we wont delete streams from stream queue, so double check
+			if s == nil || s.streamID == 1 /* crypto stream is handled separately */ {
+				continue
+			}
 
-		// Tiny: repeatedly fill the packet with current stream until full or stream not available
-		for {
+			// Tiny: repeatedly fill the packet with current stream until full or stream not available
 			frame.StreamID = s.streamID
 			// not perfect, but thread-safe since writeOffset is only written when getting data
 			frame.Offset = s.writeOffset
@@ -203,14 +203,14 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 				maxLen = utils.MinByteCount(maxLen, sendWindowSize)
 
 				// Tiny: apply path limit
-				pathLimit := handler.GetPathStreamLimit(pth.pathID, sid)
-				utils.Infof("path %v stream %v limit %v", pth.pathID, sid, pathLimit)
-				maxLen = utils.MinByteCount(maxLen, pathLimit)
+				// pathLimit := handler.GetPathStreamLimit(pth.pathID, sid)
+				// utils.Infof("path %v stream %v limit %v", pth.pathID, sid, pathLimit)
+				// maxLen = utils.MinByteCount(maxLen, pathLimit)
 			}
 
 			// Tiny: either FC blocks, or we run out of path limit
 			if maxLen == 0 {
-				break
+				continue
 			}
 
 			var data []byte
@@ -224,7 +224,7 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 			// Tiny: we have nothing to send & not sending FIN
 			shouldSendFin := s.shouldSendFin()
 			if data == nil && !shouldSendFin {
-				break
+				continue
 			}
 
 			if shouldSendFin {
@@ -237,9 +237,13 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 			// Tiny: its from original quic-go
 			f.flowControlManager.AddBytesSent(s.streamID, dataLen)
 			utils.Debugf("path %v consume %v bytes on stream %v", pth.pathID, dataLen, sid)
+			sent = true
 			// Tiny: although it works even if dataLen == 0, we still checks
 			if dataLen > 0 {
 				handler.ConsumePathBytes(pth.pathID, sid, dataLen)
+			}
+			if shouldSendFin {
+				handler.DelStreamByte(sid)
 			}
 
 			// Tiny: it must breaks the loop next time when FC blocks
@@ -260,9 +264,13 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 			}
 
 			frame = &wire.StreamFrame{DataLenPresent: true}
+			break
+		}
+
+		if !sent {
+			return
 		}
 	}
-	return
 }
 
 // maybeSplitOffFrame removes the first n bytes and returns them as a separate frame. If n >= len(frame), nil is returned and nothing is modified.
