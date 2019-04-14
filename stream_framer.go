@@ -197,12 +197,12 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 			lenStreamData := s.lenOfDataForWriting()
 			if lenStreamData != 0 {
 				sendWindowSize, _ = f.flowControlManager.SendWindowSize(s.streamID)
-				utils.Debugf("stream %v swnd %v", sid, sendWindowSize)
+				utils.Infof("stream %v swnd %v", sid, sendWindowSize)
 				maxLen = utils.MinByteCount(maxLen, sendWindowSize)
 
 				// Tiny: apply path limit
 				pathLimit := handler.GetPathStreamLimit(pth.pathID, sid)
-				utils.Debugf("path %v stream %v limit %v", pth.pathID, sid, pathLimit)
+				utils.Infof("path %v stream %v limit %v", pth.pathID, sid, pathLimit)
 				maxLen = utils.MinByteCount(maxLen, pathLimit)
 			}
 

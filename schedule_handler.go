@@ -29,9 +29,11 @@ type ScheduleHandler interface {
 }
 
 type streamInfo struct {
-	que   bool
-	bytes protocol.ByteCount
-	alloc map[protocol.PathID]protocol.ByteCount
+	que    bool
+	parent protocol.StreamID
+	weight int
+	bytes  protocol.ByteCount
+	alloc  map[protocol.PathID]protocol.ByteCount
 }
 
 type pathInfo struct {
@@ -118,25 +120,24 @@ func (e *epicScheduling) buildTree() map[protocol.StreamID]*depNode {
 
 	e.streamQueue = e.streamQueue[:0]
 	for sid, si := range e.streams {
-		si.que = false
+		si.que = true
 		// there cannot be error
 		s, _ := e.sess.streamsMap.GetOrOpenStream(sid)
-		if s == nil {
-			continue
-		}
-		if si.bytes == 0 && (!s.finishedWriting.Get() || s.finSent.Get()) {
-			continue
+		if s == nil || (si.bytes == 0 && (!s.finishedWriting.Get() || s.finSent.Get())) {
+			si.que = false
 		}
 
-		si.que = true
-		e.streamQueue = append(e.streamQueue, sid)
+		if si.que {
+			e.streamQueue = append(e.streamQueue, sid)
+		}
+
 		cur := getNode(sid)
-		cur.weight = float64(s.weight)
+		cur.weight = float64(si.weight)
 		if cur.weight <= 0 {
 			cur.weight = 1
 		}
 		cur.size = float64(si.bytes)
-		pa := getNode(s.parent)
+		pa := getNode(si.parent)
 		pa.child = append(pa.child, cur)
 		cur.parent = pa
 		pa.sumWeight += cur.weight
@@ -163,15 +164,25 @@ func (e *epicScheduling) updatePath() {
 		rtt2 := e.paths[j].path.rttStats.SmoothedRTT()
 		return rtt1 < rtt2
 	})
+	for _, pth := range e.paths {
+		utils.Infof("%v", pth.path.pathID)
+	}
 }
 
-func (e *epicScheduling) getPathInfo() {
+func (e *epicScheduling) getPathInfo() bool {
 	for _, pi := range e.paths {
 		pth := pi.path
+		srtt := pth.rttStats.SmoothedRTT()
+		if srtt == 0 {
+			utils.Infof("no est path %v", pth.pathID)
+			return false
+		}
 		pi.thr = float64(pth.sentPacketHandler.GetBandwidthEstimate()) / 8.0
-		pi.rtt = pth.rttStats.SmoothedRTT()
+		pi.rtt = srtt
 		pi.queue = 0
+		utils.Infof("path %v thr %v", pth.pathID, pi.thr)
 	}
+	return true
 }
 
 // Tiny: not thread safe
@@ -188,7 +199,23 @@ func (e *epicScheduling) rearrangeStreams() {
 		return
 	}
 
-	e.getPathInfo()
+	// if some RTT is not estimated, we do not put on limit
+	est := e.getPathInfo()
+	if !est {
+		for _, sid := range e.streamQueue {
+			s := e.streams[sid]
+
+			for t := range s.alloc {
+				delete(s.alloc, t)
+			}
+
+			for _, p := range e.paths {
+				s.alloc[p.path.pathID] = s.bytes
+			}
+		}
+		return
+	}
+
 	var bwSum float64
 	for _, p := range e.paths {
 		bwSum += p.thr
@@ -274,9 +301,12 @@ func (e *epicScheduling) AddStreamByte(streamID protocol.StreamID, bytes protoco
 		}
 		s.bytes += bytes
 	} else {
+		str, _ := e.sess.streamsMap.GetOrOpenStream(streamID)
 		e.streams[streamID] = &streamInfo{
-			bytes: bytes,
-			alloc: make(map[protocol.PathID]protocol.ByteCount),
+			bytes:  bytes,
+			alloc:  make(map[protocol.PathID]protocol.ByteCount),
+			parent: str.parent,
+			weight: str.weight,
 		}
 	}
 	utils.Debugf("add stream %v %v bytes", streamID, bytes)

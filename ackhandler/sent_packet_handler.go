@@ -268,8 +268,8 @@ func (h *sentPacketHandler) GetBandwidthEstimate() congestion.Bandwidth {
 	// Tiny: copy from OliaSender.BandwidthEstimate
 	srtt := h.rttStats.SmoothedRTT()
 	if srtt == 0 {
-		// return 1 to avoid zero
-		return 1
+		// return 1000
+		return 0
 	}
 	return congestion.BandwidthFromDelta(h.congestion.GetCongestionWindow(), srtt)
 }
