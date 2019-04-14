@@ -35,8 +35,10 @@ type streamInfo struct {
 	weight float64
 	bytes  protocol.ByteCount
 
-	prop  float64
-	quota float64
+	prop    float64
+	quota   float64
+	alloc   protocol.PathID
+	alloced bool
 	// alloc  map[protocol.PathID]protocol.ByteCount
 }
 
