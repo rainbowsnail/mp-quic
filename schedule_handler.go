@@ -4,7 +4,7 @@ import (
 	"github.com/lucas-clemente/quic-go/internal/protocol"
 	"github.com/lucas-clemente/quic-go/internal/utils"
 
-	// "math"
+	"math"
 	// "runtime/debug"
 	"sort"
 	"sync"
@@ -30,6 +30,7 @@ type ScheduleHandler interface {
 }
 
 type streamInfo struct {
+	id     protocol.StreamID
 	que    bool
 	parent protocol.StreamID
 	weight float64
@@ -354,6 +355,7 @@ func (e *epicScheduling) AddStreamByte(streamID protocol.StreamID, bytes protoco
 	} else {
 		str, _ := e.sess.streamsMap.GetOrOpenStream(streamID)
 		e.streams[streamID] = &streamInfo{
+			id:    streamID,
 			bytes: bytes,
 			// alloc:  make(map[protocol.PathID]protocol.ByteCount),
 			parent: str.parent,
@@ -458,8 +460,38 @@ func (e *epicScheduling) RefreshPath(copyMap bool) {
 	e.rearrangeStreams()
 }
 
-func (e *epicScheduling) selectPathFastest() (*path, *path) {
+func (e *epicScheduling) selectPathFastest() (*pathInfo, *pathInfo) {
+	e.getPathInfo()
 
+	if len(e.paths) == 0 {
+		return nil, nil
+	}
+	if len(e.paths) == 1 {
+		return e.paths[0], nil
+	}
+
+	p1 := e.paths[0]
+	r1 := p1.rtt
+	var p2 *pathInfo
+	for _, p := range e.paths {
+		if p.rtt == 0 {
+			continue
+		}
+		if p.rtt < r1 {
+			p2 = p1
+			p1 = p
+			r1 = p.rtt
+		} else if p2 == nil {
+			p2 = p
+		}
+	}
+	return p1, p2
+}
+
+func allocatePath(s *streamInfo, p *pathInfo) {
+	utils.Infof("allocate stream %v path %v", s.id)
+	s.alloced = true
+	s.alloc = p.path.pathID
 }
 
 // Jing: select path for a stream
@@ -471,33 +503,33 @@ func (e *epicScheduling) streamSelectPath(streamID protocol.StreamID, weight flo
 		utils.Debugf("stream %v not exists", streamID)
 	}
 	if pathSlow == nil {
-		s.pathID = pathFast.pathID
-		utils.Debugf("path 2 %v not exists")
+		allocatePath(s, pathFast)
+		utils.Infof("path 2 %v not exists")
 		return nil
 	}
 
 	// Jing: TODO: if fast path is available
-	fastAvailable := e.sess.scheduler.PathAvailable(pathFast)
+	fastAvailable := pathFast.path.sentPacketHandler.SendingAllowed()
 	if fastAvailable {
-		s.pathID = pathFast.pathID
+		allocatePath(s, pathFast)
 		return nil
 	}
 
-	slowAvailable := e.sess.scheduler.PathAvailable(pathSlow)
-	if slowAvailable == false {
+	slowAvailable := pathSlow.path.sentPacketHandler.SendingAllowed()
+	if !slowAvailable {
 		return nil
 	}
 	// Jing: TODO: otherwise
-	rttFast := float64(pathFast.rttStats.SmoothedRTT())
-	rttSlow := float64(pathSlow.rttStats.SmoothedRTT())
-	sigmaFast := float64(pathFast.rttStats.MeanDeviation())
-	sigmaSlow := float64(pathSlow.rttStats.MeanDeviation())
+	rttFast := pathFast.rtt
+	rttSlow := pathSlow.rtt
+	sigmaFast := float64(pathFast.path.rttStats.MeanDeviation())
+	sigmaSlow := float64(pathSlow.path.rttStats.MeanDeviation())
 	utils.Infof("rttSlow=%v, rttFast=%v", rttSlow, rttFast)
 
 	k := float64(e.bytesUntilCompletion(streamID, weight, sumWeight))
 	// Jing: n = 1+ k/cwnd_f
-	cwndFast := float64(pathFast.sentPacketHandler.GetBandwidthEstimate() / 8)
-	cwndSlow := float64(pathSlow.sentPacketHandler.GetBandwidthEstimate() / 8)
+	cwndFast := pathFast.thr
+	cwndSlow := pathSlow.thr
 	n := float64(1+uint(k)) / float64(cwndFast)
 	beta := float64(0.8)
 	delta := math.Max(sigmaFast, sigmaSlow)
