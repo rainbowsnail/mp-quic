@@ -2,7 +2,7 @@ package quic
 
 import (
 	"net"
-	"strings"
+	// "strings"
 	"sync"
 	"time"
 
@@ -200,9 +200,9 @@ func (pcm *pconnManager) createPconns() error {
 	}
 	for _, i := range ifaces {
 		// TODO (QDC): do this in a generic way
-		if !strings.Contains(i.Name, "eth") && !strings.Contains(i.Name, "rmnet") && !strings.Contains(i.Name, "wlan") {
-			continue
-		}
+		// if !strings.Contains(i.Name, "eth") && !strings.Contains(i.Name, "rmnet") && !strings.Contains(i.Name, "wlan") {
+		// 	continue
+		// }
 		addrs, err := i.Addrs()
 		if err != nil {
 			return err
