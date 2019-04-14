@@ -233,9 +233,9 @@ func (sch *scheduler) selectPathFastest(s *session) (*path, *path) {
 pathLoop:
 	for pathID, pth := range s.paths {
 		// Don't block path usage if we retransmit, even on another path
-		if !pth.SendingAllowed() {
-			continue pathLoop
-		}
+		// if !pth.SendingAllowed() {
+		//	continue pathLoop
+		//}
 
 		// If this path is potentially failed, do not consider it for sending
 		if pth.potentiallyFailed.Get() {
@@ -283,7 +283,7 @@ pathLoop:
 		selectedPath = pth
 		//selectedPathID = pathID
 	}
-
+	utils.Debugf("fastPID = %v, slowPID = %v", selectedPath, lastPath)
 	return selectedPath, lastPath
 }
 
@@ -471,7 +471,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 		// Tiny: i'm confused with the logic of WUF frames and the purpose of ackRemainingPaths
 		//		 but still keep the logic
 		pth := sch.selectPath(s, hasRetransmission, hasStreamRetransmission, fromPth)
-		utils.Infof("pth id=%v", pth.pathID)
+		utils.Infof("prepare to send packet on pth id=%v", pth.pathID)
 		
 		// If we have an handshake packet retransmission, do it directly
 		if hasRetransmission && retransmitHandshakePacket != nil {
@@ -522,6 +522,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 		windowUpdateFrames = nil
 		if !sent {
 			// Prevent sending empty packets
+			utils.Debugf("no packet send on current path, rearrange streams")
 			sch.handler.RearrangeStreams()
 			return sch.ackRemainingPaths(s, windowUpdateFrames)
 		}

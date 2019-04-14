@@ -110,7 +110,7 @@ func (e *epicScheduling) setup() {
 	e.sumRemainOpportunity = uint(0)
 }
 func (e *epicScheduling) Check(sid protocol.StreamID, pathID protocol.PathID) bool{
-	utils.Infof("Check")
+	utils.Infof("Check for %v on path %v", sid, pathID)
 	if e.streams[sid].pathID != pathID  {
 		utils.Infof("false path ID ")
 		e.RearrangeStreams()
@@ -197,7 +197,12 @@ func (e *epicScheduling) getActiveNodes(n *depNode) float64{
 	utils.Infof("stream id = %v", e.streams[n.id])
 	s, ok := e.streams[n.id]
 	//size := e.streams[n.id].bytes
-	e.activeNodes = make([]*depNode, 0)
+
+	// only clear activeNodes when it is root node
+	if n.id == 0{
+		e.activeNodes = make([]*depNode, 0)
+	}
+	
 	if ok && s.bytes > 0 {
 		e.activeNodes = append(e.activeNodes,n)
 		//e.activeNodes.append(n)
@@ -286,7 +291,9 @@ func (e *epicScheduling) bytesUntilCompletion(streamID protocol.StreamID, weight
 } 
 
 func (e *epicScheduling) updateOpportunity(n *depNode) error{
-	utils.Infof("update opportunity")
+	e.Lock()
+	defer e.Unlock()
+	utils.Debugf("newly created opportunity tree")
 	sumWeight := e.getActiveNodes(n)
 	e.streamOpportunity = make(map[protocol.StreamID]uint)
 	e.sumRemainOpportunity = 0
@@ -294,6 +301,8 @@ func (e *epicScheduling) updateOpportunity(n *depNode) error{
 		utils.Infof("one node stream id = %v for loop!", n.id)
 		e.streamOpportunity[n.id] = uint(n.weight * float64(maxOpportunity)/sumWeight)
 		utils.Infof("select path!")
+
+		// Jing: TODO: whether to change path ID
 		//if e.streams[n.id].pathID == 255{
 		e.streamSelectPath(n.id, n.weight, sumWeight)
 		//}
@@ -500,9 +509,6 @@ func (e *epicScheduling) GetStreamQueue() []protocol.StreamID {
 func (e *epicScheduling) GetActiveStream() *map[protocol.StreamID]uint {
 	e.RLock()
 	defer e.RUnlock()
-	//ret := make(map[protocol.StreamID]uint)
-	//ret := make([]protocol.StreamID, len(e.streamQueue))
-	// copy(ret, e.streamOpportunity)
 	if len(e.streamOpportunity) == 0{
 		e.rearrangeStreams()
 	}
@@ -528,14 +534,12 @@ func (e *epicScheduling) GetPathStreamLimit(pid protocol.PathID, sid protocol.St
 
 // Jing: update opportunity
 func (e *epicScheduling) UpdateOpportunity(streamID protocol.StreamID, bytes protocol.ByteCount) {
-	e.Lock()
-	defer e.Unlock()
 	if _, ok := e.streamOpportunity[streamID]; ok {
 		if e.streamOpportunity[streamID] > 0 && e.sumRemainOpportunity > 0{
-			utils.Infof("stream %v opportunity = %v", streamID,e.sumRemainOpportunity)
+			utils.Infof("stream %v opportunity = %v before sending packets", streamID,e.sumRemainOpportunity)
 			e.streamOpportunity[streamID] -= 1
 			e.sumRemainOpportunity -= 1
-			if e.streams[streamID].bytes ==0 {
+			if e.streams[streamID].bytes == 0 {
 				e.sumRemainOpportunity -= e.streamOpportunity[streamID]
 				e.streamOpportunity[streamID] = 0
 			}

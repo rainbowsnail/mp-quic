@@ -168,7 +168,7 @@ func (f *streamFramer) maybePopFramesForRetransmission(maxLen protocol.ByteCount
 }
 
 func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *path) (res []*wire.StreamFrame) {
-	utils.Infof("maybePopNormalFrames")
+	utils.Debugf("maybe Pop NormalFrames for path %v", pth.pathID)
 	frame := &wire.StreamFrame{DataLenPresent: true}
 	var currentLen protocol.ByteCount
 
@@ -191,10 +191,10 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 			continue
 		}
 		streamOpportunity := *handler.GetStreamOpportunity()
-		if streamOpportunity[sid] == 0 {
-			utils.Infof("opportunity == 0")
-			continue
-		}
+		//if streamOpportunity[sid] == 0 {
+		//	utils.Infof("opportunity == 0")
+		//	continue
+		//}
 
 		// Tiny: repeatedly fill the packet with current stream until full or stream not available
 		for {
