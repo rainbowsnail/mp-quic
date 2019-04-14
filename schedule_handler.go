@@ -407,6 +407,9 @@ func (e *epicScheduling) selectPathFastest() (*pathInfo, *pathInfo) {
 }
 
 func allocatePath(s *streamInfo, p *pathInfo) {
+	if p.path.pathID == 0 {
+		return
+	}
 	utils.Infof("allocate stream %v path %v", s.id, p.path.pathID)
 	s.alloced = true
 	s.alloc = p.path.pathID
@@ -416,6 +419,9 @@ func allocatePath(s *streamInfo, p *pathInfo) {
 func (e *epicScheduling) streamSelectPath(s *streamInfo, weight float64, sumWeight float64) error {
 	pathFast, pathSlow := e.selectPathFastest()
 	//pathSlow := e.sess.scheduler.selecrPathFastAvailable(e.sess)
+	if pathFast == nil {
+		return nil
+	}
 	if pathSlow == nil {
 		allocatePath(s, pathFast)
 		return nil

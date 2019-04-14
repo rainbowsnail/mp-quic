@@ -817,7 +817,8 @@ func (s *session) sendPing(pth *path) error {
 		return err
 	}
 	if packet == nil {
-		return errors.New("Session BUG: expected ping packet not to be nil")
+		// return errors.New("Session BUG: expected ping packet not to be nil")
+		return nil
 	}
 	return s.sendPackedPacket(packet, pth)
 }
