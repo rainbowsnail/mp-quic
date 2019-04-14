@@ -13,7 +13,7 @@ import (
 const (
 	maxOpportunity = uint(1000)
 	bytesOpportunity = uint(1000)
-	lowestQuantum = uint(1000)
+	lowestQuantum = uint(1500)
 )
 
 // ScheduleHandler deal with scheduling
@@ -35,20 +35,25 @@ type ScheduleHandler interface {
 	// called to consume bytes
 	ConsumePathBytes(protocol.PathID, protocol.StreamID, protocol.ByteCount)
 	// called when path availability changed
-	RefreshPath([]protocol.PathID)
+	RefreshPath(bool)
 	// called manually
 	RearrangeStreams()
 }
 
 type streamInfo struct {
-	bytes protocol.ByteCount
 	pathID protocol.PathID
 	//oppotunity uint
 	waiting uint
-	alloc map[protocol.PathID]protocol.ByteCount
+
+	que    bool
+	parent protocol.StreamID
+	weight int
+	bytes  protocol.ByteCount
+	alloc  map[protocol.PathID]protocol.ByteCount
 }
 
 type pathInfo struct {
+	path  *path
 	queue time.Duration
 	rtt   time.Duration
 
@@ -79,7 +84,8 @@ type epicScheduling struct {
 
 	sess *session
 
-	paths       []protocol.PathID
+	paths       []*pathInfo
+	pathMap     map[protocol.PathID]*pathInfo
 	streams     map[protocol.StreamID]*streamInfo
 	activeNodes []*depNode
 	streamOpportunity map[protocol.StreamID]uint
@@ -95,7 +101,8 @@ func NewEpicScheduling(sess *session) ScheduleHandler {
 }
 
 func (e *epicScheduling) setup() {
-	e.paths = make([]protocol.PathID, 0)
+	e.pathMap = make(map[protocol.PathID]*pathInfo)
+	e.paths = make([]*pathInfo, 0)
 	e.streamQueue = make([]protocol.StreamID, 0)
 	e.activeNodes = make([]*depNode, 0)
 	e.streamOpportunity = make(map[protocol.StreamID]uint)
@@ -104,8 +111,13 @@ func (e *epicScheduling) setup() {
 }
 func (e *epicScheduling) Check(sid protocol.StreamID, pathID protocol.PathID) bool{
 	utils.Infof("Check")
+	if e.streams[sid].pathID != pathID  {
+		utils.Infof("false path ID ")
+		e.RearrangeStreams()
+	}
+
 	if e.streams[sid].pathID != pathID || e.streamOpportunity[sid] == 0  {
-		utils.Infof("False")
+		utils.Infof("False no opportunity")
 		return false
 	}
 	utils.Infof("True")
@@ -137,32 +149,37 @@ func (e *epicScheduling) buildTree() map[protocol.StreamID]*depNode {
 		if node, ok = ret[id]; !ok {
 			node = &depNode{id: id, weight: 1}
 			ret[id] = node
-			utils.Infof("add node %v",id)
+			//utils.Infof("add node %v",id)
 		}
 		return node
 	}
 
 	e.streamQueue = e.streamQueue[:0]
 	for sid, si := range e.streams {
+		si.que = true
 		// there cannot be error
-		utils.Infof("build tree sid=%v", sid)
+		//utils.Infof("build tree sid=%v", sid)
 		s, _ := e.sess.streamsMap.GetOrOpenStream(sid)
-		if s == nil {
-			continue
+		if s == nil || (si.bytes == 0 && (!s.finishedWriting.Get() || s.finSent.Get())) {
+			si.que = false
 		}
-		utils.Infof("build tree sid=%v not nil", sid)
 
-		e.streamQueue = append(e.streamQueue, sid)
+		if si.que {
+			e.streamQueue = append(e.streamQueue, sid)
+		}
+		//utils.Infof("build tree sid=%v not nil", sid)
+
 		cur := getNode(sid)
-		cur.weight = float64(s.weight)
+		cur.weight = float64(si.weight)
 		if cur.weight <= 0 {
 			cur.weight = 1
 		}
 		cur.size = float64(si.bytes)
-		utils.Infof("%v", cur.size)
-		pa := getNode(s.parent)
-		utils.Infof("parent = %v cur = %v", s.parent, sid)
+		//utils.Infof("%v", cur.size)
+		pa := getNode(si.parent)
+		//utils.Infof("parent = %v cur = %v", si.parent, sid)
 		pa.child = append(pa.child, cur)
+		cur.parent = pa
 		pa.sumWeight += cur.weight
 	}
 	root := getNode(0)
@@ -180,10 +197,12 @@ func (e *epicScheduling) getActiveNodes(n *depNode) float64{
 	utils.Infof("stream id = %v", e.streams[n.id])
 	s, ok := e.streams[n.id]
 	//size := e.streams[n.id].bytes
+	e.activeNodes = make([]*depNode, 0)
 	if ok && s.bytes > 0 {
 		e.activeNodes = append(e.activeNodes,n)
 		//e.activeNodes.append(n)
 		sumWeight += n.weight
+		return n.weight
 	}else{
 		utils.Infof("not in streams???")
 		if n.id != 0{
@@ -217,11 +236,17 @@ func (e *epicScheduling) streamSelectPath(streamID protocol.StreamID, weight flo
 		s.pathID = pathFast.pathID
 		return nil
 	}
+
+	slowAvailable := e.sess.scheduler.PathAvailable(pathSlow)
+	if slowAvailable == false{
+		return nil
+	}
 	// Jing: TODO: otherwise
 	rttFast := float64(pathFast.rttStats.SmoothedRTT())
-	rttSlow := float64(pathFast.rttStats.SmoothedRTT())
+	rttSlow := float64(pathSlow.rttStats.SmoothedRTT())
 	sigmaFast := float64(pathFast.rttStats.MeanDeviation())
-	sigmaSlow := float64(pathFast.rttStats.MeanDeviation())
+	sigmaSlow := float64(pathSlow.rttStats.MeanDeviation())
+	utils.Infof("rttSlow=%v, rttFast=%v", rttSlow,rttFast)
 
 	k := float64(e.bytesUntilCompletion(streamID, weight, sumWeight))
 	// Jing: n = 1+ k/cwnd_f
@@ -269,7 +294,9 @@ func (e *epicScheduling) updateOpportunity(n *depNode) error{
 		utils.Infof("one node stream id = %v for loop!", n.id)
 		e.streamOpportunity[n.id] = uint(n.weight * float64(maxOpportunity)/sumWeight)
 		utils.Infof("select path!")
+		//if e.streams[n.id].pathID == 255{
 		e.streamSelectPath(n.id, n.weight, sumWeight)
+		//}
 		e.sumRemainOpportunity += e.streamOpportunity[n.id]
 		//if e.streamInfo[n.id].pathID == 255{
 			//e.streamSelectPath(n.id, n.weight, sumWeight)
@@ -294,23 +321,29 @@ func (e *epicScheduling) updateStreamQueue() {
 func (e *epicScheduling) updatePath() {
 	// Tiny: it may cause race
 	sort.Slice(e.paths, func(i, j int) bool {
-		rtt1 := e.sess.paths[e.paths[i]].rttStats.SmoothedRTT()
-		rtt2 := e.sess.paths[e.paths[j]].rttStats.SmoothedRTT()
+		rtt1 := e.paths[i].path.rttStats.SmoothedRTT()
+		rtt2 := e.paths[j].path.rttStats.SmoothedRTT()
 		return rtt1 < rtt2
 	})
+	for _, pth := range e.paths {
+		utils.Infof("%v", pth.path.pathID)
+	}
 }
 
-func (e *epicScheduling) getPathInfo() map[protocol.PathID]*pathInfo {
-	ret := make(map[protocol.PathID]*pathInfo)
-	for _, pid := range e.paths {
-		// Tiny: should this have lock?
-		pth := e.sess.paths[pid]
-		ret[pid] = &pathInfo{
-			thr: float64(pth.sentPacketHandler.GetBandwidthEstimate()) / 8.0,
-			rtt: pth.rttStats.SmoothedRTT(),
+func (e *epicScheduling) getPathInfo() bool {
+	for _, pi := range e.paths {
+		pth := pi.path
+		srtt := pth.rttStats.SmoothedRTT()
+		if srtt == 0 {
+			utils.Infof("no est path %v", pth.pathID)
+			return false
 		}
+		pi.thr = float64(pth.sentPacketHandler.GetBandwidthEstimate()) / 8.0
+		pi.rtt = srtt
+		pi.queue = 0
+		utils.Infof("path %v thr %v", pth.pathID, pi.thr)
 	}
-	return ret
+	return true
 }
 
 // Tiny: not thread safe
@@ -327,9 +360,25 @@ func (e *epicScheduling) old_rearrangeStreams() {
 		return
 	}
 
-	pathInfo := e.getPathInfo()
+	// if some RTT is not estimated, we do not put on limit
+	est := e.getPathInfo()
+	if !est {
+		for _, sid := range e.streamQueue {
+			s := e.streams[sid]
+
+			for t := range s.alloc {
+				delete(s.alloc, t)
+			}
+
+			for _, p := range e.paths {
+				s.alloc[p.path.pathID] = s.bytes
+			}
+		}
+		return
+	}
+
 	var bwSum float64
-	for _, p := range pathInfo {
+	for _, p := range e.paths {
 		bwSum += p.thr
 	}
 
@@ -345,39 +394,39 @@ func (e *epicScheduling) old_rearrangeStreams() {
 			// Tiny: if the stream is small enough, find a path with minimal queue + rtt
 			var (
 				mini time.Duration = 1<<63 - 1
-				k    protocol.PathID
+				k    *pathInfo
 			)
-			for pid, p := range pathInfo {
+			for _, p := range e.paths {
 				if mini > p.rtt+p.queue {
 					mini = p.rtt + p.queue
-					k = pid
+					k = p
 				}
 			}
 
-			pathInfo[k].size = s.bytes
+			k.size = s.bytes
 		} else {
 			// Tiny: minimize total queue time
 			bytes := float64(s.bytes)
 
 			var queBDPSum float64
-			for _, p := range pathInfo {
+			for _, p := range e.paths {
 				p.totQue = float64(p.queue+p.rtt) / float64(time.Second)
 				queBDPSum += p.thr * p.totQue
 			}
 			k := (bytes + queBDPSum) / bwSum
 
-			for _, p := range pathInfo {
+			for _, p := range e.paths {
 				p.si = p.thr * (k - p.totQue)
 			}
 
 			// Tiny: this part convert float size to integer & non-negative, i dont know if it works well
 			delta := int64(s.bytes)
-			for _, p := range pathInfo {
+			for _, p := range e.paths {
 				p.size = protocol.ByteCount(math.Max(math.Floor(p.si), 0))
 				delta -= int64(p.size)
 			}
 
-			for _, p := range pathInfo {
+			for _, p := range e.paths {
 				if p.size > 0 && int64(p.size)+delta >= 0 {
 					p.size = protocol.ByteCount(int64(p.size) + delta)
 					break
@@ -385,13 +434,15 @@ func (e *epicScheduling) old_rearrangeStreams() {
 			}
 		}
 
-		for pid, p := range pathInfo {
-			s.alloc[pid] = p.size
+		for _, p := range e.paths {
+			s.alloc[p.path.pathID] = p.size
 			if p.size > 0 {
 				p.queue += p.rtt + time.Duration(float64(time.Second)*float64(p.size)/p.thr)
 			}
 		}
 	}
+
+	// utils.Infof("rearrange %v", int(time.Since(t)/time.Microsecond))
 }
 
 func (e *epicScheduling) RearrangeStreams() {
@@ -405,22 +456,23 @@ func (e *epicScheduling) AddStreamByte(streamID protocol.StreamID, bytes protoco
 	e.Lock()
 	defer e.Unlock()
 
-	utils.Debugf("add stream %v %v bytes", streamID, bytes)
-
 	if s, ok := e.streams[streamID]; ok {
-		// if s.bytes > 0 {
-		// 	utils.Errorf("try duplicate add stream %v bytes, ignore", streamID)
-		// 	return
-		// }
+		if bytes <= 0 && s.que {
+			return
+		}
 		s.bytes += bytes
 	} else {
+		str, _ := e.sess.streamsMap.GetOrOpenStream(streamID)
 		e.streams[streamID] = &streamInfo{
-			bytes: bytes,
 			pathID: 255,
 			waiting: 0,
-			alloc: make(map[protocol.PathID]protocol.ByteCount),
+			bytes:  bytes,
+			alloc:  make(map[protocol.PathID]protocol.ByteCount),
+			parent: str.parent,
+			weight: str.weight,
 		}
 	}
+	utils.Debugf("add stream %v %v bytes", streamID, bytes)
 	e.rearrangeStreams()
 }
 
@@ -503,21 +555,53 @@ func (e *epicScheduling) ConsumePathBytes(pathID protocol.PathID, streamID proto
 	e.Lock()
 	defer e.Unlock()
 	if s, ok := e.streams[streamID]; ok {
-		if b, ok := s.alloc[pathID]; ok && s.bytes >= bytes && b >= bytes {
-			utils.Debugf("stream %v consume %v from path %v", streamID, bytes, pathID)
-			s.bytes -= bytes
-			s.alloc[pathID] -= bytes
+		s.bytes -= bytes
+		//if b, ok := s.alloc[pathID]; ok && s.bytes >= bytes && b >= bytes {
+		//	utils.Debugf("stream %v consume %v from path %v", streamID, bytes, pathID)
+		//	s.bytes -= bytes
+			//s.alloc[pathID] -= bytes
 			// e.rearrangeStreams()
-			return
-		}
+		return
+		//}
 	}
 	utils.Errorf("path %v try consume %v bytes on stream %v failed", pathID, bytes, streamID)
 }
 
-func (e *epicScheduling) RefreshPath(paths []protocol.PathID) {
+// Tiny: get all not failed & open paths
+func (e *epicScheduling) getAlivePaths() {
+	e.paths = e.paths[:0]
+	if len(e.pathMap) <= 1 {
+		pi := e.pathMap[protocol.InitialPathID]
+		p := pi.path
+		if p.open.Get() && !p.potentiallyFailed.Get() {
+			e.paths = append(e.paths, pi)
+			return
+		}
+	}
+
+	for pid, pi := range e.pathMap {
+		p := pi.path
+		if pid != protocol.InitialPathID && p.open.Get() && !p.potentiallyFailed.Get() {
+			e.paths = append(e.paths, pi)
+		}
+	}
+	// utils.Infof("refresh paths %v", e.paths)
+}
+
+func (e *epicScheduling) RefreshPath(copyMap bool) {
 	e.Lock()
 	defer e.Unlock()
-	// Tiny: ensure paths wont be used outside
-	e.paths = paths
-	// e.rearrangeStreams()
+
+	// we assume there cannot be concurrent if copyMap = true
+	if copyMap {
+		for k := range e.pathMap {
+			delete(e.pathMap, k)
+		}
+		for k, v := range e.sess.paths {
+			e.pathMap[k] = &pathInfo{path: v}
+		}
+	}
+
+	e.getAlivePaths()
+	e.rearrangeStreams()
 }

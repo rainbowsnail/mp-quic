@@ -538,10 +538,13 @@ func (s *session) handleFrames(fs []wire.Frame, p *path) error {
 			for i := 0; i < int(frame.NumPaths); i++ {
 				s.remoteRTTs[frame.PathIDs[i]] = frame.RemoteRTTs[i]
 				if frame.RemoteRTTs[i] >= 30*time.Minute {
-					// Path is potentially failed
-					s.paths[frame.PathIDs[i]].potentiallyFailed.Set(true)
-					// Tiny: notify path change
-					s.onPathChange()
+					p := s.paths[frame.PathIDs[i]]
+					if !p.potentiallyFailed.Get() {
+						// Path is potentially failed
+						p.potentiallyFailed.Set(true)
+						// Tiny: notify path change
+						s.onPathChange(false)
+					}
 				}
 			}
 			s.pathsLock.RUnlock()
@@ -869,10 +872,10 @@ func (s *session) queueResetStreamFrame(id protocol.StreamID, offset protocol.By
 
 // Tiny: onStreamData first notify scheduler the data on stream for allocation
 //       then scheduleSending as normal
-func (s *session) onStreamData(str *stream) {
+func (s *session) onStreamData(str *stream, bytes protocol.ByteCount) {
 	// Tiny: ignore crypto stream
 	if str.streamID != 1 {
-		s.scheduler.allocateStream(s, str)
+		s.scheduler.allocateStream(s, str, bytes)
 	}
 	s.scheduleSending()
 }
@@ -951,32 +954,9 @@ func (s *session) getWindowUpdateFrames(force bool) []*wire.WindowUpdateFrame {
 	return res
 }
 
-// Tiny: get all not failed & open paths
-func (s *session) getAlivePaths() []protocol.PathID {
-	// Tiny: we dont use path lock
-	// s.pathsLock.RLock()
-	// defer s.pathsLock.RUnlock()
-
-	if len(s.paths) <= 1 {
-		p := s.paths[protocol.InitialPathID]
-		if p.open.Get() && !p.potentiallyFailed.Get() {
-			return []protocol.PathID{protocol.InitialPathID}
-		}
-		return nil
-	}
-
-	var ret []protocol.PathID
-	for pid, p := range s.paths {
-		if pid != protocol.InitialPathID && p.open.Get() && !p.potentiallyFailed.Get() {
-			ret = append(ret, pid)
-		}
-	}
-	return ret
-}
-
 // Tiny: called when path changes
-func (s *session) onPathChange() {
-	s.scheduler.handler.RefreshPath(s.getAlivePaths())
+func (s *session) onPathChange(copyMap bool) {
+	s.scheduler.handler.RefreshPath(copyMap)
 }
 
 func (s *session) LocalAddr() net.Addr {

@@ -257,9 +257,9 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 			}
 
 			// Tiny: although it works even if dataLen == 0, we still checks
-			//if dataLen > 0 {
-			//	handler.ConsumePathBytes(pth.pathID, sid, dataLen)
-			//}
+			if dataLen > 0 {
+				handler.ConsumePathBytes(pth.pathID, sid, dataLen)
+			}
 
 			// Tiny: it must breaks the loop next time when FC blocks
 			// Finally, check if we are now FC blocked and should queue a BLOCKED frame

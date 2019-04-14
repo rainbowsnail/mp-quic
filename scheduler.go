@@ -294,7 +294,7 @@ func (sch *scheduler) selectPath(s *session, hasRetransmission bool, hasStreamRe
 	// XXX Currently round-robin
 	// TODO select the right scheduler dynamically
 	utils.Infof("selectPath")
-	 return sch.selectPathLowLatency(s, hasRetransmission, hasStreamRetransmission, fromPth)
+	return sch.selectPathLowLatency(s, hasRetransmission, hasStreamRetransmission, fromPth)
 	//return sch.selectPathRoundRobin(s, hasRetransmission, hasStreamRetransmission, fromPth)
 }
 
@@ -435,11 +435,10 @@ func (sch *scheduler) ackRemainingPaths(s *session, totalWindowUpdateFrames []*w
 }
 
 // Tiny: called when stream issue a write
-func (sch *scheduler) allocateStream(s *session, str *stream) {
-	bytes := str.lenOfDataForWriting()
-	// if bytes <= 0 {
-	// 	return
-	// }
+func (sch *scheduler) allocateStream(s *session, str *stream, bytes protocol.ByteCount) {
+	if bytes <= 0 && (!str.finishedWriting.Get() || str.finSent.Get()) {
+		return
+	}
 	// utils.Infof("stream %v write %v bytes", str.streamID, bytes)
 	sch.handler.AddStreamByte(str.streamID, bytes)
 }
@@ -523,6 +522,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 		windowUpdateFrames = nil
 		if !sent {
 			// Prevent sending empty packets
+			sch.handler.RearrangeStreams()
 			return sch.ackRemainingPaths(s, windowUpdateFrames)
 		}
 
@@ -551,8 +551,8 @@ func (sch *scheduler) sendPacket(s *session) error {
 		}
 	}
 
-	sch.handler.RearrangeStreams()
-	windowUpdateFrames = s.getWindowUpdateFrames(false)
+	//sch.handler.RearrangeStreams()
+	//windowUpdateFrames = s.getWindowUpdateFrames(false)
 	
 	return nil
 }
