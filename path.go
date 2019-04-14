@@ -94,7 +94,7 @@ func (p *path) close() error {
 	p.open.Set(false)
 
 	// Tiny: notify path change
-	p.sess.onPathChange()
+	p.sess.onPathChange(false)
 	return nil
 }
 
@@ -243,10 +243,12 @@ func (p *path) handlePacketImpl(pkt *receivedPacket) error {
 	hdr := pkt.publicHeader
 	data := pkt.data
 
-	// We just received a new packet on that path, so it works
-	p.potentiallyFailed.Set(false)
-	// Tiny: notify path change
-	p.sess.onPathChange()
+	if p.potentiallyFailed.Get() {
+		// We just received a new packet on that path, so it works
+		// Tiny: notify path change
+		p.potentiallyFailed.Set(false)
+		p.sess.onPathChange(false)
+	}
 
 	// Calculate packet number
 	hdr.PacketNumber = protocol.InferPacketNumber(
@@ -298,7 +300,7 @@ func (p *path) onRTO(lastSentTime time.Time) bool {
 	if p.lastNetworkActivityTime.Before(lastSentTime) {
 		p.potentiallyFailed.Set(true)
 		// Tiny: notify path change
-		p.sess.onPathChange()
+		p.sess.onPathChange(false)
 		p.sess.schedulePathsFrame()
 		return true
 	}
