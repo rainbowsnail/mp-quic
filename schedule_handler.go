@@ -153,6 +153,11 @@ func (e *epicScheduling) updateStreamQueue() {
 
 	sort.Slice(e.streamQueue, func(i, j int) bool {
 		ii, jj := e.streamQueue[i], e.streamQueue[j]
+		if ii == 3 || ii == 1 {
+			return true
+		} else if jj == 3 || jj == 1 {
+			return false
+		}
 		return tree[ii].delay < tree[jj].delay
 	})
 }

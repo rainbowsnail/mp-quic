@@ -173,6 +173,8 @@ func (f *streamFramer) maybePopNormalFrames(maxBytes protocol.ByteCount, pth *pa
 	handler := pth.sess.scheduler.handler
 	streams := handler.GetStreamQueue()
 
+	utils.Infof("streams %v", streams)
+
 	// Tiny: iterate streams until we fill the packet or we run out of streams
 	for _, sid := range streams {
 		s, _ := f.streamsMap.GetOrOpenStream(sid)
