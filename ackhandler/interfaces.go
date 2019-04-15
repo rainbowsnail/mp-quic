@@ -12,7 +12,7 @@ import (
 type SentPacketHandler interface {
 	// SentPacket may modify the packet
 	SentPacket(packet *Packet) error
-	ReceivedAck(ackFrame *wire.AckFrame, withPacketNumber protocol.PacketNumber, recvTime time.Time) error
+	ReceivedAck(ackFrame *wire.AckFrame, withPacketNumber protocol.PacketNumber, recvTime time.Time, ackPathID protocol.PathID) (error, bool)
 
 	// Specific to multipath operation
 	ReceivedClosePath(f *wire.ClosePathFrame, withPacketNumber protocol.PacketNumber, recvTime time.Time) error

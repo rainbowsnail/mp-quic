@@ -32,11 +32,14 @@ type AckFrame struct {
 	// this field Will not be set for received ACKs frames
 	PacketReceivedTime time.Time
 	DelayTime          time.Duration
+	ReceivedPathID protocol.PathID
 }
 
 // ParseAckFrame reads an ACK frame
-func ParseAckFrame(r *bytes.Reader, version protocol.VersionNumber) (*AckFrame, error) {
+func ParseAckFrame(r *bytes.Reader, version protocol.VersionNumber, rcvPathID protocol.PathID) (*AckFrame, error) {
 	frame := &AckFrame{}
+
+	frame.ReceivedPathID = rcvPathID
 
 	typeByte, err := r.ReadByte()
 	if err != nil {

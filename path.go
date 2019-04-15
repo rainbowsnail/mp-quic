@@ -19,10 +19,13 @@ const (
 
 type path struct {
 	pathID protocol.PathID
+	ackPathID protocol.PathID
+	updateAckPathID bool
 	conn   connection
 	sess   *session
 
 	rttStats *congestion.RTTStats
+	rttStatsPaths map[protocol.PathID]*congestion.RTTStats
 
 	sentPacketHandler     ackhandler.SentPacketHandler
 	receivedPacketHandler ackhandler.ReceivedPacketHandler
@@ -53,6 +56,9 @@ type path struct {
 // setup initializes values that are independent of the perspective
 func (p *path) setup(oliaSenders map[protocol.PathID]*congestion.OliaSender) {
 	p.rttStats = &congestion.RTTStats{}
+	p.rttStatsPaths = make(map[protocol.PathID]*congestion.RTTStats)
+	// initial ackPathID = pathID
+	p.ackPathID = p.pathID
 
 	var cong congestion.SendAlgorithm
 
@@ -61,7 +67,7 @@ func (p *path) setup(oliaSenders map[protocol.PathID]*congestion.OliaSender) {
 		oliaSenders[p.pathID] = cong.(*congestion.OliaSender)
 	}
 
-	sentPacketHandler := ackhandler.NewSentPacketHandler(p.rttStats, cong, p.onRTO)
+	sentPacketHandler := ackhandler.NewSentPacketHandler(p.rttStats, &(p.rttStatsPaths), cong, p.onRTO)
 
 	now := time.Now()
 
@@ -126,12 +132,58 @@ runLoop:
 	p.runClosed <- struct{}{}
 }
 
+// Update Return Ack Path if any other Path's RTT is smaller
+func (p* path) UpdateReturnPath() bool {
+	smallestRTT := p.rttStats.SmoothedRTT()
+	var smallestPathID protocol.PathID
+	if smallestRTT != 0 {
+		smallestPathID = p.ackPathID
+	}
+	utils.Infof("cur smallestRTT = %v on path%x", smallestRTT, p.ackPathID)
+	for pathID, rttStats := range p.rttStatsPaths{
+		if pathID == p.ackPathID {
+			continue
+		}
+		if smallestRTT == 0 {
+			smallestRTT = rttStats.SmoothedRTT()
+			smallestPathID = pathID
+		}
+		utils.Infof("Path %x rtt = %v", pathID, rttStats.SmoothedRTT())
+		if rttStats.SmoothedRTT() != 0 && smallestRTT > rttStats.SmoothedRTT() {
+			smallestRTT = rttStats.SmoothedRTT()
+			smallestPathID = pathID
+		}
+	}
+//	if smallestPathID != p.ackPathID {
+//		p.ackPathID = smallestPathID
+//		p.updateAckPathID = true
+//		utils.Infof("Path.go: UpdateReturnPath for path %x", p.pathID)
+		//return true
+//	}
+	utils.Infof("UpdateReturnPath in %x", p.pathID)
+	p.sess.UpdateAllReturnPath(smallestPathID)
+	return true
+	//return false
+}
+
 func (p *path) SendingAllowed() bool {
 	return p.open.Get() && p.sentPacketHandler.SendingAllowed()
 }
 
 func (p *path) GetStopWaitingFrame(force bool) *wire.StopWaitingFrame {
 	return p.sentPacketHandler.GetStopWaitingFrame(force)
+}
+
+func (p *path) GetAckFrameOnPath(pathID protocol.PathID) *wire.AckFrame {
+	if pathID != p.ackPathID{
+		return nil
+	}
+	ack := p.receivedPacketHandler.GetAckFrame()
+	if ack != nil {
+		ack.PathID = p.pathID
+	}
+
+	return ack
 }
 
 func (p *path) GetAckFrame() *wire.AckFrame {
@@ -205,7 +257,7 @@ func (p *path) handlePacketImpl(pkt *receivedPacket) error {
 		hdr.PacketNumber,
 	)
 
-	packet, err := p.sess.unpacker.Unpack(hdr.Raw, hdr, data)
+	packet, err := p.sess.unpacker.Unpack(hdr.Raw, hdr, data, p.pathID)
 	if utils.Debug() {
 		if err != nil {
 			utils.Debugf("<- Reading packet 0x%x (%d bytes) for connection %x on path %x", hdr.PacketNumber, len(data)+len(hdr.Raw), hdr.ConnectionID, p.pathID)

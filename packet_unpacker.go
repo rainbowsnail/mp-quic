@@ -24,7 +24,7 @@ type packetUnpacker struct {
 	aead    quicAEAD
 }
 
-func (u *packetUnpacker) Unpack(publicHeaderBinary []byte, hdr *wire.PublicHeader, data []byte) (*unpackedPacket, error) {
+func (u *packetUnpacker) Unpack(publicHeaderBinary []byte, hdr *wire.PublicHeader, data []byte, pathID protocol.PathID) (*unpackedPacket, error) {
 	buf := getPacketBuffer()
 	defer putPacketBuffer(buf)
 	decrypted, encryptionLevel, err := u.aead.Open(buf, data, hdr.PacketNumber, publicHeaderBinary)
@@ -60,7 +60,7 @@ func (u *packetUnpacker) Unpack(publicHeaderBinary []byte, hdr *wire.PublicHeade
 				}
 			}
 		} else if typeByte&0xc0 == 0x40 {
-			frame, err = wire.ParseAckFrame(r, u.version)
+			frame, err = wire.ParseAckFrame(r, u.version, pathID)
 			if err != nil {
 				err = qerr.Error(qerr.InvalidAckData, err.Error())
 			}
@@ -106,6 +106,9 @@ func (u *packetUnpacker) Unpack(publicHeaderBinary []byte, hdr *wire.PublicHeade
 				frame, err = wire.ParseClosePathFrame(r, u.version)
 			case 0x12:
 				frame, err = wire.ParsePathsFrame(r, u.version)
+			// TODO: define a new value for ChangeAckPath Frame
+			case 0x13:
+				frame, err = wire.ParseChangeAckPathFrame(r, u.version)
 			default:
 				err = qerr.Error(qerr.InvalidFrameData, fmt.Sprintf("unknown type byte 0x%x", typeByte))
 			}

@@ -20,7 +20,7 @@ import (
 )
 
 type unpacker interface {
-	Unpack(publicHeaderBinary []byte, hdr *wire.PublicHeader, data []byte) (*unpackedPacket, error)
+	Unpack(publicHeaderBinary []byte, hdr *wire.PublicHeader, data []byte, pathID protocol.PathID) (*unpackedPacket, error)
 }
 
 type receivedPacket struct {
@@ -469,6 +469,21 @@ func (s *session) idleTimeout() time.Duration {
 	return s.connectionParameters.GetIdleConnectionStateLifetime()
 }
 
+func (s *session) UpdateAllReturnPath(ackPathID protocol.PathID)  {
+	if s.perspective == protocol.PerspectiveServer {
+		for _, p := range s.paths {
+			//if p.rttStats.SmoothedRTT() != 0 && p.rttStats.SmoothedRTT() > rttStats.SmoothedRTT() {
+			if(p.ackPathID != ackPathID){
+				p.ackPathID = ackPathID
+				p.updateAckPathID = true
+				//p.rttStats.OnConnectionMigration()
+				//p.sentPacketHandler.largestReceivedPacketWithAck = 0
+				p.rttStatsPaths = make(map[protocol.PathID]*congestion.RTTStats)
+			}
+		}
+	}
+}
+
 func (s *session) handlePacketImpl(p *receivedPacket) error {
 	if s.perspective == protocol.PerspectiveClient {
 		diversificationNonce := p.publicHeader.DiversificationNonce
@@ -510,6 +525,8 @@ func (s *session) handleFrames(fs []wire.Frame, p *path) error {
 			err = s.handleStreamFrame(frame)
 		case *wire.AckFrame:
 			err = s.handleAckFrame(frame)
+		case *wire.ChangeAckPathFrame:
+			err = s.handleAckReturnPathFrame(frame)
 		case *wire.ConnectionCloseFrame:
 			s.closeRemote(qerr.Error(frame.ErrorCode, frame.ReasonPhrase))
 		case *wire.GoawayFrame:
@@ -548,6 +565,7 @@ func (s *session) handleFrames(fs []wire.Frame, p *path) error {
 				}
 			}
 			s.pathsLock.RUnlock()
+			s.scheduler.shouldInstigateDupAck.Set(true)
 		default:
 			return errors.New("Session BUG: unexpected frame type")
 		}
@@ -607,6 +625,17 @@ func (s *session) handleStreamFrame(frame *wire.StreamFrame) error {
 	return str.AddStreamFrame(frame)
 }
 
+func (s *session) handleAckReturnPathFrame(frame *wire.ChangeAckPathFrame) error {
+	// TODO: check time and other error
+	//return nil
+	if s.perspective == protocol.PerspectiveClient {
+		for pathID, ackRtnPath := range frame.AckReturnPaths{
+			s.paths[pathID].ackPathID = ackRtnPath
+		}
+	}
+	return nil
+}
+
 func (s *session) handleWindowUpdateFrame(frame *wire.WindowUpdateFrame) error {
 	if frame.StreamID != 0 {
 		str, err := s.streamsMap.GetOrOpenStream(frame.StreamID)
@@ -636,7 +665,19 @@ func (s *session) handleRstStreamFrame(frame *wire.RstStreamFrame) error {
 
 func (s *session) handleAckFrame(frame *wire.AckFrame) error {
 	pth := s.paths[frame.PathID]
-	err := pth.sentPacketHandler.ReceivedAck(frame, pth.lastRcvdPacketNumber, pth.lastNetworkActivityTime)
+	utils.Infof("session handle Ack for path %x", frame.PathID)
+	err, returnPathRttUpdated := pth.sentPacketHandler.ReceivedAck(frame, pth.lastRcvdPacketNumber, pth.lastNetworkActivityTime, pth.ackPathID)
+
+	if s.perspective == protocol.PerspectiveServer {
+		if returnPathRttUpdated{
+			// Choose new ack return path
+			returnPathUpdated := pth.UpdateReturnPath()
+			if returnPathUpdated == true {
+				s.streamFramer.AddAckReturnPathsFrame(s)
+			}
+		}
+	}
+
 	if err == nil && pth.rttStats.SmoothedRTT() > s.rttStats.SmoothedRTT() {
 		// Update the session RTT, which comes to take the max RTT on all paths
 		s.rttStats.UpdateSessionRTT(pth.rttStats.SmoothedRTT())

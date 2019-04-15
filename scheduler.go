@@ -10,16 +10,61 @@ import (
 	"github.com/lucas-clemente/quic-go/internal/wire"
 )
 
+const (
+	ackPathChangeTimer = 3 * time.Second
+)
+
 type scheduler struct {
 	// XXX Currently round-robin based, inspired from MPTCP scheduler
-	quotas map[protocol.PathID]uint
+	handler          ScheduleHandler
+	lastAckDupTime   time.Time
+	quotas           map[protocol.PathID]uint
+	delay            map[protocol.PathID]time.Duration
+	shouldSendDupAck map[protocol.PathID]bool
 
-	handler ScheduleHandler
+	dupAckFrame           *wire.AckFrame
+	lastDupAckTime        time.Time
+	timer                 *utils.Timer
+	shouldInstigateDupAck utils.AtomicBool
 }
 
 func (sch *scheduler) setup(s *session) {
 	sch.quotas = make(map[protocol.PathID]uint)
 	sch.handler = NewEpicScheduling(s)
+	sch.delay = make(map[protocol.PathID]time.Duration)
+	sch.shouldSendDupAck = make(map[protocol.PathID]bool)
+	sch.dupAckFrame = nil
+	sch.shouldInstigateDupAck.Set(false)
+	now := time.Now()
+	sch.lastDupAckTime = now
+	sch.timer = utils.NewTimer()
+	go sch.run()
+}
+
+func (sch *scheduler) run() {
+	// XXX (QDC): relay everything to the session, maybe not the most efficient
+	//runLoop:
+
+	sch.maybeResetTimer()
+	for {
+
+		select {
+		case <-sch.timer.Chan():
+			sch.timer.SetRead()
+			sch.shouldInstigateDupAck.Set(true)
+			utils.Infof("scheduler timer timeout")
+
+			now := time.Now()
+			sch.lastDupAckTime = now
+			sch.maybeResetTimer()
+		}
+	}
+}
+
+func (sch *scheduler) maybeResetTimer() {
+	deadline := sch.lastDupAckTime.Add(ackPathChangeTimer)
+	deadline = utils.MaxTime(deadline, time.Now())
+	sch.timer.Reset(deadline)
 }
 
 func (sch *scheduler) getRetransmission(s *session) (hasRetransmission bool, retransmitPacket *ackhandler.Packet, pth *path) {
@@ -336,23 +381,47 @@ func (sch *scheduler) ackRemainingPaths(s *session, totalWindowUpdateFrames []*w
 		windowUpdateFrames = s.getWindowUpdateFrames(s.peerBlocked)
 	}
 	for _, pthTmp := range s.paths {
-		ackTmp := pthTmp.GetAckFrame()
+		hasAck := false
+		//ackTmp := pthTmp.GetAckFrame()
+		for _, tmpPath := range s.paths {
+			ackTmp := tmpPath.GetAckFrameOnPath(pthTmp.pathID)
+			// TODO-Jing: ack packets on other path and dup ack
+			if ackTmp != nil {
+				hasAck = true
+				utils.Infof("Ack send on %x", pthTmp)
+				s.packer.QueueControlFrame(ackTmp, pthTmp)
+			}
+		}
+		if shouldSendDupAckOnPath, ok := sch.shouldSendDupAck[pthTmp.pathID]; ok {
+			if pthTmp.pathID != protocol.InitialPathID {
+				if shouldSendDupAckOnPath {
+					hasAck = true
+					utils.Infof("DupAck send on %x", pthTmp.pathID)
+					if sch.dupAckFrame == nil {
+						utils.Infof("DupAck is gone!!!!")
+					}
+					s.packer.QueueControlFrame(sch.dupAckFrame, pthTmp)
+					sch.shouldSendDupAck[pthTmp.pathID] = false
+				}
+			}
+		}
+
 		for _, wuf := range windowUpdateFrames {
 			s.packer.QueueControlFrame(wuf, pthTmp)
 		}
-		if ackTmp != nil || len(windowUpdateFrames) > 0 {
-			if pthTmp.pathID == protocol.InitialPathID && ackTmp == nil {
+		if hasAck || len(windowUpdateFrames) > 0 {
+			if pthTmp.pathID == protocol.InitialPathID && !hasAck {
 				continue
 			}
 			swf := pthTmp.GetStopWaitingFrame(false)
 			if swf != nil {
 				s.packer.QueueControlFrame(swf, pthTmp)
 			}
-			s.packer.QueueControlFrame(ackTmp, pthTmp)
+			//s.packer.QueueControlFrame(ackTmp, pthTmp)
 			// XXX (QDC) should we instead call PackPacket to provides WUFs?
 			var packet *packedPacket
 			var err error
-			if ackTmp != nil {
+			if hasAck {
 				// Avoid internal error bug
 				packet, err = s.packer.PackAckPacket(pthTmp)
 			} else {
@@ -426,18 +495,57 @@ func (sch *scheduler) sendPacket(s *session) error {
 		} else {
 			// XXX Some automatic ACK generation should be done someway
 			var ack *wire.AckFrame
+			hasAck := false
+			//ack = pth.GetAckFrame()
+			for _, tmpPath := range s.paths {
+				ack = tmpPath.GetAckFrameOnPath(pth.pathID)
+				// TODO-Jing: ack packets on other path and dup ack
+				if s.perspective == protocol.PerspectiveClient {
 
-			ack = pth.GetAckFrame()
-			if ack != nil {
-				s.packer.QueueControlFrame(ack, pth)
+					if ack != nil && sch.shouldInstigateDupAck.Get() {
+						sch.shouldInstigateDupAck.Set(false)
+						sch.dupAckFrame = ack
+
+						for pathID, p := range s.paths {
+							if p != pth {
+								utils.Infof("shouldSendDupAck on Path %x", pathID)
+								sch.shouldSendDupAck[pathID] = true
+							}
+						}
+					}
+				}
+				if ack != nil {
+					utils.Infof("Ack send on %x", pth.pathID)
+					s.packer.QueueControlFrame(ack, pth)
+					hasAck = true
+				}
+
 			}
-			if ack != nil || hasStreamRetransmission {
+			if s.perspective == protocol.PerspectiveClient {
+				if shouldSendDupAckOnPath, ok := sch.shouldSendDupAck[pth.pathID]; ok {
+					if pth.pathID != protocol.InitialPathID {
+						if shouldSendDupAckOnPath {
+							utils.Infof("DupAck send on %x", pth.pathID)
+							s.packer.QueueControlFrame(sch.dupAckFrame, pth)
+							hasAck = true
+							sch.shouldSendDupAck[pth.pathID] = false
+						}
+					}
+				}
+			}
+			if hasAck || hasStreamRetransmission {
 				swf := pth.sentPacketHandler.GetStopWaitingFrame(hasStreamRetransmission)
 				if swf != nil {
 					s.packer.QueueControlFrame(swf, pth)
 				}
 			}
-
+			// Also add ACK RETURN PATHS frames, if any
+			if s.perspective == protocol.PerspectiveServer {
+				for arpf := s.streamFramer.PopAckReturnPathsFrame(s); arpf != nil; arpf = s.streamFramer.PopAckReturnPathsFrame(s) {
+					utils.Infof("ACK RETURN PATHS frames send on %x", pth.pathID)
+					s.packer.QueueControlFrame(arpf, pth)
+				}
+			}
 			// Also add CLOSE_PATH frames, if any
 			for cpf := s.streamFramer.PopClosePathFrame(); cpf != nil; cpf = s.streamFramer.PopClosePathFrame() {
 				s.packer.QueueControlFrame(cpf, pth)
@@ -447,7 +555,6 @@ func (sch *scheduler) sendPacket(s *session) error {
 			for aaf := s.streamFramer.PopAddAddressFrame(); aaf != nil; aaf = s.streamFramer.PopAddAddressFrame() {
 				s.packer.QueueControlFrame(aaf, pth)
 			}
-
 			// Also add PATHS frames, if any
 			for pf := s.streamFramer.PopPathsFrame(); pf != nil; pf = s.streamFramer.PopPathsFrame() {
 				s.packer.QueueControlFrame(pf, pth)
@@ -503,6 +610,7 @@ func (sch *scheduler) sendPacket(s *session) error {
 		if i < len(pths) && !pathAvailable(pths[i], hasRetransmission) {
 			i++
 		}
+		//return sch.ackRemainingPaths(s, windowUpdateFrames)
 	}
 	// if leastSent {
 	// 	sch.handler.RearrangeStreams()
